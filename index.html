@@ -89,6 +89,7 @@
     transition:border-color 0.15s;
   }
   #bp-btn:hover{border-color:#5be0f5}
+  #mute-btn{position:fixed;top:4px;right:4px;width:28px;height:28px;background:rgba(0,0,0,0.6);border:1px solid #333;border-radius:4px;color:#fff;font-size:14px;cursor:pointer;z-index:15;display:none;text-align:center;line-height:28px}
 
   /* Boat button */
   #boat-btn{
@@ -343,11 +344,31 @@
   .quest-turn-in{border-color:#b08020;background:#f5a623;color:#111}
 
   .hidden{display:none!important}
+
+  /* Streak indicator */
+  #streak-display{
+    position:fixed;top:34px;left:12px;
+    background:rgba(255,150,0,0.15);border:1px solid rgba(255,150,0,0.4);
+    padding:3px 10px;border-radius:4px;
+    color:#ffa500;font-family:monospace;font-size:12px;font-weight:700;
+    display:none;z-index:10;
+  }
+  #streak-display.hot{background:rgba(255,50,0,0.2);border-color:#ff3300;color:#ff3300}
+
+  /* Weather indicator */
+  #weather-display{
+    position:fixed;top:34px;right:170px;
+    background:rgba(0,0,0,0.5);
+    padding:2px 8px;border-radius:4px;
+    color:#b0c4de;font-family:monospace;font-size:11px;
+    display:none;z-index:10;
+  }
 </style>
 </head>
 <body>
 
 <canvas id="c"></canvas>
+<button id="mute-btn" onclick="toggleMute()">&#128266;</button>
 
 <!-- HUD -->
 <div id="hud">
@@ -361,16 +382,20 @@
   <span class="hud-status" id="h-status"></span>
   <button id="name-btn" onclick="changeName()" style="background:none;border:1px solid #3a5a8a;color:#5be0f5;font-family:monospace;font-size:11px;padding:2px 8px;cursor:pointer;border-radius:3px">Name</button>
 </div>
+<div id="streak-display"></div>
+<div id="weather-display"></div>
 <div id="leaderboard"><h4>LEADERBOARD</h4><div id="lb-rows"></div></div>
 <button id="admin-btn" onclick="toggleAdmin()" style="position:fixed;bottom:68px;left:12px;width:50px;height:50px;background:rgba(0,0,0,0.8);border:2px solid #ff4444;border-radius:10px;cursor:pointer;display:none;z-index:15;font-size:20px;line-height:50px;text-align:center;color:#ff4444;font-family:monospace;font-weight:700">⚙</button>
 <button id="bp-btn" onclick="toggleBackpack()">&#127890;<div class="bp-count" id="bp-count">0</div></button>
 <button id="boat-btn" onclick="clickBoatBtn()">&#9973;</button>
+<button id="tourney-btn" style="position:fixed;bottom:12px;left:128px;width:50px;height:50px;background:rgba(0,0,0,0.8);border:2px solid #f5a623;border-radius:10px;cursor:pointer;display:none;z-index:15;font-size:20px;line-height:50px;text-align:center;color:#f5a623;font-family:monospace" onclick="startTournament()">&#127942;</button>
 <div id="bp-panel">
   <div class="bp-tab-row">
     <div class="bp-tab active" onclick="switchBpTab('fish')">Bag</div>
     <div class="bp-tab" onclick="switchBpTab('index')">Index</div>
     <div class="bp-tab" onclick="switchBpTab('rods')">Rods</div>
     <div class="bp-tab" onclick="switchBpTab('items')">Items</div>
+    <div class="bp-tab" onclick="switchBpTab('tank')">Tank</div>
   </div>
   <div id="bp-content"></div>
 </div>
@@ -430,6 +455,101 @@ function resize(){
 }
 addEventListener('resize',resize);resize();
 
+// ========== SOUND EFFECTS (8-bit Web Audio) ==========
+let muted=false;
+window.toggleMute=function(){muted=!muted;$('mute-btn').textContent=muted?'\u{1F507}':'\u{1F50A}'};
+const SFX={
+  ctx:null,
+  init(){if(!this.ctx)this.ctx=new(window.AudioContext||window.webkitAudioContext)()},
+  play(type){
+    if(muted)return;
+    if(!this.ctx)return;
+    if(this.ctx.state==='suspended')this.ctx.resume();
+    const o=this.ctx.createOscillator();
+    const g=this.ctx.createGain();
+    o.connect(g);g.connect(this.ctx.destination);
+    if(type==='cast'){o.type='sine';o.frequency.setValueAtTime(300,this.ctx.currentTime);o.frequency.linearRampToValueAtTime(600,this.ctx.currentTime+0.15);g.gain.setValueAtTime(0.15,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.2);o.start();o.stop(this.ctx.currentTime+0.2)}
+    else if(type==='splash'){o.type='sawtooth';o.frequency.setValueAtTime(200,this.ctx.currentTime);o.frequency.linearRampToValueAtTime(80,this.ctx.currentTime+0.3);g.gain.setValueAtTime(0.08,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.3);o.start();o.stop(this.ctx.currentTime+0.3)}
+    else if(type==='bite'){o.type='square';o.frequency.setValueAtTime(800,this.ctx.currentTime);o.frequency.setValueAtTime(600,this.ctx.currentTime+0.05);o.frequency.setValueAtTime(800,this.ctx.currentTime+0.1);g.gain.setValueAtTime(0.12,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.15);o.start();o.stop(this.ctx.currentTime+0.15)}
+    else if(type==='catch'){o.type='sine';const now=this.ctx.currentTime;o.frequency.setValueAtTime(400,now);o.frequency.setValueAtTime(500,now+0.1);o.frequency.setValueAtTime(600,now+0.2);o.frequency.setValueAtTime(800,now+0.3);g.gain.setValueAtTime(0.15,now);g.gain.linearRampToValueAtTime(0,now+0.4);o.start();o.stop(now+0.4)}
+    else if(type==='escape'){o.type='sawtooth';o.frequency.setValueAtTime(400,this.ctx.currentTime);o.frequency.linearRampToValueAtTime(150,this.ctx.currentTime+0.3);g.gain.setValueAtTime(0.1,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.3);o.start();o.stop(this.ctx.currentTime+0.3)}
+    else if(type==='buy'){o.type='sine';const now=this.ctx.currentTime;o.frequency.setValueAtTime(500,now);o.frequency.setValueAtTime(700,now+0.1);g.gain.setValueAtTime(0.12,now);g.gain.linearRampToValueAtTime(0,now+0.2);o.start();o.stop(now+0.2)}
+    else if(type==='sell'){o.type='triangle';const now=this.ctx.currentTime;o.frequency.setValueAtTime(600,now);o.frequency.setValueAtTime(800,now+0.08);o.frequency.setValueAtTime(1000,now+0.15);g.gain.setValueAtTime(0.1,now);g.gain.linearRampToValueAtTime(0,now+0.2);o.start();o.stop(now+0.2)}
+    else if(type==='levelup'){o.type='sine';const now=this.ctx.currentTime;o.frequency.setValueAtTime(400,now);o.frequency.setValueAtTime(500,now+0.1);o.frequency.setValueAtTime(600,now+0.2);o.frequency.setValueAtTime(800,now+0.3);o.frequency.setValueAtTime(1000,now+0.4);g.gain.setValueAtTime(0.15,now);g.gain.linearRampToValueAtTime(0,now+0.5);o.start();o.stop(now+0.5)}
+    else if(type==='boss_hit'){o.type='square';o.frequency.setValueAtTime(200,this.ctx.currentTime);o.frequency.linearRampToValueAtTime(100,this.ctx.currentTime+0.1);g.gain.setValueAtTime(0.15,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.15);o.start();o.stop(this.ctx.currentTime+0.15)}
+    else if(type==='boss_win'){o.type='sine';const now=this.ctx.currentTime;[400,500,600,700,800,1000,1200].forEach((f,i)=>{o.frequency.setValueAtTime(f,now+i*0.08)});g.gain.setValueAtTime(0.15,now);g.gain.linearRampToValueAtTime(0,now+0.6);o.start();o.stop(now+0.6)}
+    else if(type==='walk'){o.type='sine';o.frequency.setValueAtTime(100+Math.random()*30,this.ctx.currentTime);g.gain.setValueAtTime(0.02,this.ctx.currentTime);g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+0.05);o.start();o.stop(this.ctx.currentTime+0.05)}
+    else if(type==='pet'){o.type='sine';const now=this.ctx.currentTime;o.frequency.setValueAtTime(800,now);o.frequency.setValueAtTime(1000,now+0.05);o.frequency.setValueAtTime(900,now+0.1);g.gain.setValueAtTime(0.08,now);g.gain.linearRampToValueAtTime(0,now+0.15);o.start();o.stop(now+0.15)}
+  }
+};
+
+// ========== BACKGROUND MUSIC (procedural 8-bit) ==========
+const MUSIC={
+  playing:false,
+  osc:null,
+  gain:null,
+  noteIdx:0,
+  noteTimer:0,
+  melodies:[
+    [262,294,330,349,330,294,262,247], // 0 Meadow - gentle C major
+    [330,349,392,440,392,349,330,294], // 1 Tropical - bright and warm
+    [196,220,233,262,233,220,196,185], // 2 Swamp - low and murky
+    [349,330,294,262,294,330,349,392], // 3 Arctic - cold descending
+    [220,247,294,330,370,330,294,247], // 4 Volcano - intense rising
+    [262,330,392,440,392,330,262,220], // 5 Mushroom - bouncy
+    [294,330,370,392,370,330,294,262], // 6 Desert - sandy sway
+    [392,440,494,523,494,440,392,349], // 7 Crystal - high sparkly
+    [165,196,220,185,165,147,131,147], // 8 Deep Ocean - deep and slow
+    [440,494,523,587,523,494,440,392], // 9 Sky - airy high notes
+    [185,220,262,247,220,196,175,196], // 10 Storm Peak - tense
+    [247,294,330,370,392,370,330,294], // 11 Dragon's Lair - ominous
+    [147,165,175,196,175,165,147,131], // 12 Void Wastes - dark low
+    [330,392,494,523,587,523,494,392], // 13 Cosmic Reef - spacey
+    [175,196,220,262,294,262,220,196], // 14 Final Throne - epic
+    [262,330,294,349,330,294,262,294], // 15 Riverside - flowing
+    [349,392,440,494,440,392,349,330], // 16 Coral Bay - bubbly
+    [220,233,262,247,233,220,196,208], // 17 Frozen Lake - icy shimmer
+    [294,330,370,415,370,330,294,262], // 18 Ember Fields - fiery
+    [196,233,262,294,262,233,196,175], // 19 Sunken Ruins - ancient
+    [147,175,196,220,196,175,147,131], // 20 Abyssal Trench - abyssal
+    [440,523,494,587,523,440,392,440], // 21 Wind Temple - breezy
+    [220,262,247,294,330,294,262,220], // 22 Thunder Fortress - stormy
+    [165,196,220,262,220,196,165,147], // 23 Dark Nebula - mysterious
+    [196,233,262,294,330,294,262,233], // 24 Chaos Rift - chaotic
+  ],
+  tempo:0.35,
+  start(){
+    if(this.playing||!SFX.ctx)return;
+    this.playing=true;
+    this.osc=SFX.ctx.createOscillator();
+    this.gain=SFX.ctx.createGain();
+    this.osc.type='triangle';
+    this.osc.connect(this.gain);
+    this.gain.connect(SFX.ctx.destination);
+    this.gain.gain.value=0.04;
+    this.osc.start();
+    this.noteIdx=0;
+  },
+  stop(){
+    if(!this.playing)return;
+    this.playing=false;
+    if(this.osc){try{this.osc.stop()}catch(e){}}
+    this.osc=null;
+  },
+  update(dt){
+    if(!this.playing||!this.osc||muted)return;
+    this.noteTimer+=dt;
+    if(this.noteTimer>=this.tempo){
+      this.noteTimer=0;
+      const mel=this.melodies[curIsland]||this.melodies[0];
+      this.noteIdx=(this.noteIdx+1)%mel.length;
+      this.osc.frequency.setValueAtTime(mel[this.noteIdx],SFX.ctx.currentTime);
+      this.gain.gain.setValueAtTime(0.05,SFX.ctx.currentTime);
+      this.gain.gain.linearRampToValueAtTime(0.03,SFX.ctx.currentTime+this.tempo*0.8);
+    }
+  }
+};
+
 // ========== AVATAR COLORS ==========
 const COLORS=[
   {name:'Blue',body:'#3b82f6',dark:'#1e40af',light:'#60a5fa'},
@@ -458,6 +578,7 @@ const T=16,MW=70,MH=60;
 // 0=grass,1=water(lake),2=sand,3=shop,4=dock,5=boat dock,6=ocean
 let map=[];
 let trees=[];
+let gemNodes=[];
 let curIsland=0;
 let questGiverPos={x:0,y:0};
 let sailing=false;
@@ -487,14 +608,17 @@ const ISLAND_POS=[
   {x:80,y:60},   // 12 Void Wastes
   {x:220,y:60},  // 13 Cosmic Reef
   {x:150,y:200}, // 14 Final Throne (boss)
+  {x:150,y:130}, // 15 Riverside
+  {x:80,y:200},  // 16 Coral Bay
+  {x:150,y:130}, // 17 Frozen Lake
+  {x:80,y:200},  // 18 Ember Fields
+  {x:150,y:130}, // 19 Sunken Ruins
+  {x:80,y:200},  // 20 Abyssal Trench
+  {x:150,y:130}, // 21 Wind Temple
+  {x:80,y:200},  // 22 Thunder Fortress
+  {x:150,y:130}, // 23 Dark Nebula
+  {x:80,y:200},  // 24 Chaos Rift
 ];
-
-function getWorldIslands(){return ISLANDS.filter(i=>i.world===curWorld)}
-function getWorldIslandPos(islandId){
-  const worldIslands=ISLANDS.filter(i=>i.world===ISLANDS[islandId].world);
-  const idx=worldIslands.findIndex(i=>i.id===islandId);
-  return [{x:80,y:60},{x:220,y:60},{x:150,y:200}][idx]||{x:150,y:150};
-}
 
 const WORLDS=[
   {id:0,name:'Green Isles',desc:'Peaceful lands to learn fishing',color:'#4ade80',bossName:'The Swamp King',bossIsland:2},
@@ -504,6 +628,12 @@ const WORLDS=[
   {id:4,name:'The Void',desc:'The final frontier',color:'#ef4444',bossName:'The Void Emperor',bossIsland:14},
 ];
 let curWorld=0;
+let curGalaxy=0;
+let curStarCluster=0;
+
+function getTierMultiplier(){
+  return Math.pow(2,curGalaxy)*Math.pow(10,curStarCluster);
+}
 
 const ISLANDS=[
   // World 0 - Green Isles
@@ -571,6 +701,52 @@ const ISLANDS=[
     grass:['#1a0a0a','#2a1010','#1a0a0a'],water:['#3a0a1a','#5a1020'],sand:'#3a1a1a',ocean:'#0a0000',
     treeCol:['#4a1a1a','#6a2a2a','#ffd700'],treeType:'dead',
     fish:['Void Spawn','Emperor Fish','Doom Eel','Void Phoenix']},
+  // ---- NEW ISLANDS (2 per world, inserted before boss) ----
+  // World 0 - Green Isles
+  {id:15,name:'Riverside',desc:'Lush green riverbank teeming with life',level:2,world:0,
+    grass:['#3a7a3a','#4a8a4a','#3a7a3a'],water:['#1a6090','#2070a0'],sand:'#b0a060',ocean:'#1a5080',
+    treeCol:['#2a6a1a','#3a8a2a','#4a9a3a'],treeType:'round',
+    fish:['River Trout','Crayfish','Sunfish','Dragonfly Larva']},
+  {id:16,name:'Coral Bay',desc:'Bright corals and warm shallows',level:4,world:0,
+    grass:['#2a9a4a','#3aaa5a','#2a8a3a'],water:['#0890b0','#10b0d0'],sand:'#e8d078',ocean:'#0870a0',
+    treeCol:['#2a8a3a','#3aaa4a','#50c060'],treeType:'palm',
+    fish:['Coral Goby','Butterfly Fish','Pufferfish','Blue Tang']},
+  // World 1 - Fire & Ice
+  {id:17,name:'Frozen Lake',desc:'Cracked ice over deep frigid waters',level:10,world:1,
+    grass:['#b0c0d8','#c0d0e8','#a0b0c8'],water:['#1848a0','#2858b0'],sand:'#90a0b8',ocean:'#1a3868',
+    treeCol:['#1a4a4a','#2a5a5a','#c8d8e8'],treeType:'pine',
+    fish:['Frost Minnow','Glacial Pike','Ice Crab','Permafrost Eel']},
+  {id:18,name:'Ember Fields',desc:'Scorched earth with smoldering pools',level:13,world:1,
+    grass:['#5a3a2a','#6a4a30','#4a2a1a'],water:['#b04020','#d05030'],sand:'#7a5a3a',ocean:'#301808',
+    treeCol:['#4a2a10','#5a3018','#6a3820'],treeType:'dead',
+    fish:['Cinder Fish','Ash Crawler','Smoke Eel','Inferno Koi']},
+  // World 2 - The Depths
+  {id:19,name:'Sunken Ruins',desc:'Ancient temples beneath the waves',level:20,world:2,
+    grass:['#3a4a4a','#4a5a5a','#3a4a4a'],water:['#185880','#2068a0'],sand:'#6a7a6a',ocean:'#0a3850',
+    treeCol:['#4a5a5a','#5a6a6a','#7a8a8a'],treeType:'coral',
+    fish:['Ruin Goby','Temple Koi','Mosaic Fish','Ancient Guardian']},
+  {id:20,name:'Abyssal Trench',desc:'Bioluminescent depths of the abyss',level:25,world:2,
+    grass:['#0a1a2a','#1a2a3a','#0a1a2a'],water:['#081030','#0a1840'],sand:'#2a3a4a',ocean:'#030810',
+    treeCol:['#1a3a5a','#2050a0','#3060c0'],treeType:'crystal',
+    fish:['Lantern Fish','Depth Worm','Biolume Jelly','Trench Leviathan']},
+  // World 3 - Sky Realm
+  {id:21,name:'Wind Temple',desc:'Sacred floating temple of the winds',level:36,world:3,
+    grass:['#c0c8e0','#d0d8f0','#b0b8d0'],water:['#5080d0','#70a0e8'],sand:'#d8e0f8',ocean:'#3858a0',
+    treeCol:['#a0b0e0','#c0d0f8','#f0f0ff'],treeType:'cloud',
+    fish:['Zephyr Fish','Breeze Eel','Gale Shark','Wind Spirit']},
+  {id:22,name:'Thunder Fortress',desc:'Lightning crackles through iron walls',level:40,world:3,
+    grass:['#2a2a3a','#3a3a4a','#1a1a2a'],water:['#1a2848','#2a3858'],sand:'#4a4a5a',ocean:'#080818',
+    treeCol:['#3a3a5a','#5a5a8a','#4040aa'],treeType:'dead',
+    fish:['Volt Minnow','Spark Eel','Thunder Crab','Storm Titan']},
+  // World 4 - The Void
+  {id:23,name:'Dark Nebula',desc:'Stars swirl in pools of darkness',level:47,world:4,
+    grass:['#10082a','#20103a','#10082a'],water:['#10084a','#18105a'],sand:'#2a1a3a',ocean:'#040010',
+    treeCol:['#3020a0','#4030c0','#6040e0'],treeType:'crystal',
+    fish:['Nebula Minnow','Dark Matter Fish','Pulsar Eel','Supernova Ray']},
+  {id:24,name:'Chaos Rift',desc:'Reality fractures and bleeds',level:49,world:4,
+    grass:['#2a0a0a','#3a1018','#1a0808'],water:['#3a0830','#5a1040'],sand:'#3a1a2a',ocean:'#0a0008',
+    treeCol:['#5a1a2a','#7a2a3a','#aa3a4a'],treeType:'dead',
+    fish:['Chaos Spawn','Rift Walker','Entropy Eel','Reality Breaker']},
 ];
 
 // Boss fight state
@@ -674,6 +850,70 @@ function genIslandMap(island){
       // Final Throne: large imposing square fortress
       const fort=Math.max(Math.abs(dx)-16,Math.abs(dy)-14);
       return fort+noise*0.3;
+    }else if(id===15){
+      // Riverside: winding river shape (elongated S-curve)
+      const river=Math.abs(dy-Math.sin(dx*0.2)*8)-6;
+      const bounds=Math.max(Math.abs(dx)-18,Math.abs(dy)-14);
+      return Math.max(Math.min(river,bounds*0.5+4),bounds)+noise*0.4;
+    }else if(id===16){
+      // Coral Bay: horseshoe/bay open to the south
+      const outer=Math.sqrt(dx*dx+dy*dy)-17;
+      const bay=Math.sqrt(dx*dx*0.5+Math.pow(Math.max(0,dy-2),2)*0.8)-10;
+      return Math.max(outer,-bay>3?-99:0)+noise*0.4;
+    }else if(id===17){
+      // Frozen Lake: circular with cracks
+      const circ=Math.sqrt(dx*dx*0.5+dy*dy*0.5)-17;
+      const crack1=Math.abs(dx+dy*0.3)-1;
+      const crack2=Math.abs(dx*0.5-dy)-1;
+      const crackDist=Math.min(crack1,crack2);
+      return circ+Math.max(0,(5-Math.abs(circ))*0.1*(crackDist<2?-0.5:0))+noise*0.3;
+    }else if(id===18){
+      // Ember Fields: scattered volcanic patches
+      const p1=Math.sqrt(Math.pow(dx-6,2)*0.5+Math.pow(dy+4,2)*0.5)-9;
+      const p2=Math.sqrt(Math.pow(dx+7,2)*0.5+Math.pow(dy-5,2)*0.5)-8;
+      const p3=Math.sqrt(Math.pow(dx+2,2)*0.5+Math.pow(dy+6,2)*0.5)-7;
+      const p4=Math.sqrt(Math.pow(dx-4,2)*0.5+Math.pow(dy-7,2)*0.5)-6;
+      return Math.min(Math.min(p1,p2),Math.min(p3,p4))+noise*0.4;
+    }else if(id===19){
+      // Sunken Ruins: rectangular outline with gaps
+      const outer=Math.max(Math.abs(dx)-16,Math.abs(dy)-12);
+      const inner=Math.max(Math.abs(dx)-10,Math.abs(dy)-6);
+      const walls=Math.max(outer,-inner);
+      return walls+noise*0.3;
+    }else if(id===20){
+      // Abyssal Trench: narrow deep canyon
+      const canyon=Math.abs(dx)-6;
+      const bounds=Math.abs(dy)-18;
+      return Math.max(canyon,bounds)+noise*0.3;
+    }else if(id===21){
+      // Wind Temple: floating circular platforms
+      const c1=Math.sqrt(Math.pow(dx-8,2)+Math.pow(dy-5,2))-7;
+      const c2=Math.sqrt(Math.pow(dx+8,2)+Math.pow(dy-5,2))-7;
+      const c3=Math.sqrt(Math.pow(dx,2)+Math.pow(dy+7,2))-8;
+      const c4=Math.sqrt(dx*dx+Math.pow(dy-1,2))-5;
+      return Math.min(Math.min(c1,c2),Math.min(c3,c4))+noise*0.3;
+    }else if(id===22){
+      // Thunder Fortress: pentagon
+      const a1=dx*0.951+dy*0.309-16;
+      const a2=dx*0.588-dy*0.809-16;
+      const a3=-dx*0.588-dy*0.809-16;
+      const a4=-dx*0.951+dy*0.309-16;
+      const a5=dy-16;
+      return Math.max(Math.max(Math.max(a1,a2),Math.max(a3,a4)),a5)+noise*0.3;
+    }else if(id===23){
+      // Dark Nebula: spiral
+      const angle=Math.atan2(dy,dx);
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const spiral=Math.sin(angle*3-dist*0.4)*3;
+      return dist-15-spiral+noise*0.3;
+    }else if(id===24){
+      // Chaos Rift: chaotic irregular blobs
+      const b1=Math.sqrt(Math.pow(dx+10,2)*0.6+Math.pow(dy,2)*0.8)-8;
+      const b2=Math.sqrt(Math.pow(dx-6,2)*0.8+Math.pow(dy+8,2)*0.6)-7;
+      const b3=Math.sqrt(Math.pow(dx+3,2)*0.7+Math.pow(dy-9,2)*0.7)-6;
+      const b4=Math.sqrt(Math.pow(dx-10,2)*0.5+Math.pow(dy-3,2)*0.9)-7;
+      const b5=Math.sqrt(Math.pow(dx,2)+Math.pow(dy+4,2))-5;
+      return Math.min(Math.min(Math.min(b1,b2),Math.min(b3,b4)),b5)+noise*0.3;
     }
     return Math.sqrt(dx*dx+dy*dy)-16+noise;
   }
@@ -702,6 +942,16 @@ function genIslandMap(island){
     [{x:cx-6,y:cy-3,r:4},{x:cx+5,y:cy+5,r:3}],       // 12 void wastes
     [{x:cx,y:cy,r:5},{x:cx-6,y:cy+4,r:3}],            // 13 cosmic reef
     [{x:cx,y:cy,r:7}],                                // 14 final throne
+    [{x:cx-5,y:cy,r:5},{x:cx+6,y:cy+3,r:4}],         // 15 riverside
+    [{x:cx,y:cy+3,r:6}],                              // 16 coral bay
+    [{x:cx,y:cy,r:7}],                                // 17 frozen lake
+    [{x:cx+4,y:cy-2,r:4},{x:cx-5,y:cy+4,r:3}],       // 18 ember fields
+    [{x:cx,y:cy,r:4},{x:cx-6,y:cy-3,r:3}],            // 19 sunken ruins
+    [{x:cx,y:cy,r:4}],                                // 20 abyssal trench
+    [{x:cx+8,y:cy+5,r:3},{x:cx-8,y:cy+5,r:3},{x:cx,y:cy-7,r:4}], // 21 wind temple
+    [{x:cx,y:cy,r:5}],                                // 22 thunder fortress
+    [{x:cx,y:cy,r:5},{x:cx+5,y:cy-5,r:3}],            // 23 dark nebula
+    [{x:cx-4,y:cy+2,r:4},{x:cx+5,y:cy-3,r:3},{x:cx-2,y:cy-6,r:3}], // 24 chaos rift
   ];
   const lakes=lakeConfigs[id]||[{x:cx,y:cy,r:6}];
   for(const lk of lakes){
@@ -848,6 +1098,34 @@ function genIslandMap(island){
     if(ok)trees.push({x:tx*T+T/2,y:ty*T+T/2});
   }
 
+  // Secret cave - one per island, hidden away
+  for(let r=15;r<Math.max(MW,MH);r++){
+    let found=false;
+    for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r&&!found;dx++){
+      const sx2=Math.floor(cx)+dx,sy2=Math.floor(cy)+dy;
+      if(sx2<2||sy2<2||sx2>=MW-2||sy2>=MH-2)continue;
+      if(map[sy2][sx2]!==0)continue;
+      let tooClose=false;
+      for(let dd=-4;dd<=4;dd++)for(let dd2=-4;dd2<=4;dd2++){
+        const yy=sy2+dd,xx=sx2+dd2;
+        if(yy>=0&&yy<MH&&xx>=0&&xx<MW&&(map[yy][xx]===3||map[yy][xx]===4||map[yy][xx]===5))tooClose=true;
+      }
+      if(!tooClose){map[sy2][sx2]=7;found=true}
+    }
+    if(found)break;
+  }
+
+  // Gem nodes - sparkly rocks on certain islands
+  gemNodes.length=0;
+  const gemIslands=[4,7,8,12,13,14,19,20]; // Volcano, Crystal, Deep Ocean, etc
+  if(gemIslands.includes(island.id)){
+    for(let i=0;i<5;i++){
+      const gx=Math.floor(srand(seed+i*17+99)*(MW-6))+3;
+      const gy=Math.floor(srand(seed+i*23+77)*(MH-6))+3;
+      if(map[gy][gx]===0)gemNodes.push({x:gx*T+T/2,y:gy*T+T/2,mined:false});
+    }
+  }
+
   // Perf: cache dock and shop tile positions so render() doesn't scan every frame
   cachedDockTile={x:MW/2,y:MH-3};
   cachedShopTile={x:4,y:4};
@@ -942,6 +1220,56 @@ const FISH=[
   {name:'Emperor Fish',rarity:'uncommon',minSz:30,maxSz:70,val:120},
   {name:'Doom Eel',rarity:'rare',minSz:50,maxSz:130,val:250},
   {name:'Void Phoenix',rarity:'legendary',minSz:80,maxSz:250,val:2000},
+  // Riverside
+  {name:'River Trout',rarity:'common',minSz:8,maxSz:25,val:7},
+  {name:'Crayfish',rarity:'common',minSz:3,maxSz:10,val:10},
+  {name:'Sunfish',rarity:'uncommon',minSz:6,maxSz:18,val:25},
+  {name:'Dragonfly Larva',rarity:'rare',minSz:2,maxSz:8,val:70},
+  // Coral Bay
+  {name:'Coral Goby',rarity:'common',minSz:3,maxSz:10,val:9},
+  {name:'Butterfly Fish',rarity:'uncommon',minSz:6,maxSz:18,val:28},
+  {name:'Pufferfish',rarity:'rare',minSz:8,maxSz:22,val:78},
+  {name:'Blue Tang',rarity:'epic',minSz:6,maxSz:20,val:220},
+  // Frozen Lake
+  {name:'Frost Minnow',rarity:'common',minSz:4,maxSz:12,val:13},
+  {name:'Glacial Pike',rarity:'uncommon',minSz:20,maxSz:55,val:42},
+  {name:'Ice Crab',rarity:'rare',minSz:8,maxSz:20,val:95},
+  {name:'Permafrost Eel',rarity:'epic',minSz:30,maxSz:80,val:260},
+  // Ember Fields
+  {name:'Cinder Fish',rarity:'common',minSz:5,maxSz:15,val:16},
+  {name:'Ash Crawler',rarity:'uncommon',minSz:8,maxSz:25,val:44},
+  {name:'Smoke Eel',rarity:'rare',minSz:20,maxSz:50,val:105},
+  {name:'Inferno Koi',rarity:'epic',minSz:15,maxSz:45,val:300},
+  // Sunken Ruins
+  {name:'Ruin Goby',rarity:'common',minSz:4,maxSz:14,val:14},
+  {name:'Temple Koi',rarity:'uncommon',minSz:12,maxSz:35,val:42},
+  {name:'Mosaic Fish',rarity:'rare',minSz:10,maxSz:28,val:95},
+  {name:'Ancient Guardian',rarity:'epic',minSz:40,maxSz:120,val:280},
+  // Abyssal Trench
+  {name:'Lantern Fish',rarity:'common',minSz:5,maxSz:16,val:17},
+  {name:'Depth Worm',rarity:'uncommon',minSz:20,maxSz:60,val:52},
+  {name:'Biolume Jelly',rarity:'rare',minSz:15,maxSz:40,val:115},
+  {name:'Trench Leviathan',rarity:'epic',minSz:60,maxSz:180,val:320},
+  // Wind Temple
+  {name:'Zephyr Fish',rarity:'common',minSz:6,maxSz:18,val:22},
+  {name:'Breeze Eel',rarity:'uncommon',minSz:20,maxSz:55,val:62},
+  {name:'Gale Shark',rarity:'rare',minSz:40,maxSz:110,val:140},
+  {name:'Wind Spirit',rarity:'legendary',minSz:30,maxSz:100,val:950},
+  // Thunder Fortress
+  {name:'Volt Minnow',rarity:'common',minSz:5,maxSz:16,val:28},
+  {name:'Spark Eel',rarity:'uncommon',minSz:22,maxSz:60,val:68},
+  {name:'Thunder Crab',rarity:'rare',minSz:15,maxSz:45,val:160},
+  {name:'Storm Titan',rarity:'epic',minSz:60,maxSz:180,val:450},
+  // Dark Nebula
+  {name:'Nebula Minnow',rarity:'common',minSz:6,maxSz:18,val:38},
+  {name:'Dark Matter Fish',rarity:'uncommon',minSz:25,maxSz:60,val:90},
+  {name:'Pulsar Eel',rarity:'rare',minSz:35,maxSz:90,val:210},
+  {name:'Supernova Ray',rarity:'epic',minSz:50,maxSz:150,val:520},
+  // Chaos Rift
+  {name:'Chaos Spawn',rarity:'common',minSz:8,maxSz:24,val:45},
+  {name:'Rift Walker',rarity:'uncommon',minSz:30,maxSz:70,val:105},
+  {name:'Entropy Eel',rarity:'rare',minSz:40,maxSz:110,val:230},
+  {name:'Reality Breaker',rarity:'legendary',minSz:70,maxSz:220,val:1800},
   // WORLD BOSSES
   {name:'The Swamp King',rarity:'boss',minSz:200,maxSz:400,val:5000},
   {name:'The Fungi King',rarity:'boss',minSz:250,maxSz:450,val:7000},
@@ -974,6 +1302,15 @@ const JUNK_ITEMS=[
   {name:'Driftwood',rarity:'junk',minSz:20,maxSz:50,val:2},
 ];
 
+// Weather-dependent bonus fish
+const WEATHER_FISH=[
+  {name:'Storm Eel',rarity:'rare',minSz:20,maxSz:60,val:150,weather:'storm'},
+  {name:'Rain Dancer',rarity:'uncommon',minSz:8,maxSz:25,val:55,weather:'rain'},
+  {name:'Fog Phantom',rarity:'epic',minSz:15,maxSz:50,val:350,weather:'fog'},
+  {name:'Moonfish',rarity:'rare',minSz:10,maxSz:35,val:130,weather:'night'},
+  {name:'Dawn Koi',rarity:'uncommon',minSz:12,maxSz:40,val:60,weather:'dawn'},
+];
+
 function pickFish(rodLv){
   const ab=getRodAbility();
   // Junk chance - abilities can reduce it
@@ -992,6 +1329,30 @@ function pickFish(rodLv){
   if(ab==='luck2')luckMult=1.3;
   if(ab==='luck3')luckMult=1.5;
   if(ab==='divine')luckMult=1.5;
+  // Lucky spot bonus!
+  if(onLuckySpot)luckMult*=2;
+
+  // Weather-dependent fish chance
+  const phase=getDayPhase();
+  if(Math.random()<0.15){
+    for(const wf of WEATHER_FISH){
+      if((wf.weather===weather)||(wf.weather===phase)){
+        if(Math.random()<0.4){
+          const sz=Math.round((wf.minSz+Math.random()*(wf.maxSz-wf.minSz))*10)/10;
+          return{...wf,size:sz,fight:RARITY_FIGHT[wf.rarity]};
+        }
+      }
+    }
+  }
+
+  // Treasure map chance (rare drop)
+  if(Math.random()<0.02&&treasureMaps.length<3){
+    const mapIsland=Math.floor(Math.random()*Math.min(ISLANDS.length,curIsland+3));
+    const mapReward=Math.floor(rand(200,1000)*(1+curWorld));
+    treasureMaps.push({island:mapIsland,x:rand(10,MW-10)*T,y:rand(10,MH-10)*T,reward:mapReward});
+    me.toast={fish:null,msg:'FOUND A TREASURE MAP!'};me.toastT=3;
+    SFX.play('catch');
+  }
 
   const island=ISLANDS[curIsland];
   const available=island.fish||FISH.map(f=>f.name);
@@ -1022,7 +1383,7 @@ function fishVal(f){
   if(ab==='zephyr')val=Math.round(val*1.5);
   if(ab==='divine')val=Math.round(val*2);
   if(ab==='legendaryX2'&&f.rarity==='legendary')val*=2;
-  return val;
+  return Math.round(val*getTierMultiplier());
 }
 
 // ========== UPGRADES ==========
@@ -1089,6 +1450,42 @@ const UPGRADES=[
   // Final Throne rods
   {id:'rod_ft1',name:'Emperor Rod',desc:'Worthy of a king',price:25000,type:'rod',val:9,island:14,ability:'divine',abilityDesc:'x2 value, +50% rare, no junk'},
   {id:'rod_ft2',name:'Infinity Rod',desc:'The ultimate fishing rod',price:50000,type:'rod',val:10,island:14,ability:'divine',abilityDesc:'x2 value, +50% rare, no junk'},
+  // Riverside rods
+  {id:'rod_rv1',name:'Willow Rod',desc:'Flexible riverbank willow',price:100,type:'rod',val:2,island:15,ability:'quickBite',abilityDesc:'Faster bites'},
+  {id:'rod_rv2',name:'Reed Rod',desc:'Light and whippy',price:250,type:'rod',val:3,island:15,ability:'coinBoost',abilityDesc:'+10% coin value'},
+  // Coral Bay rods
+  {id:'rod_cb1',name:'Coral Branch Rod',desc:'Grown from living coral',price:180,type:'rod',val:2,island:16,ability:'luck',abilityDesc:'+15% rare chance'},
+  {id:'rod_cb2',name:'Shell Rod',desc:'Pearlescent shell handle',price:500,type:'rod',val:3,island:16,ability:'xpBoost',abilityDesc:'+25% XP'},
+  {id:'rod_cb3',name:'Tide Rod',desc:'Moves with the current',price:900,type:'rod',val:4,island:16,ability:'wideCursor',abilityDesc:'+25% cursor width'},
+  // Frozen Lake rods
+  {id:'rod_fl1',name:'Icicle Rod',desc:'Razor sharp frozen tip',price:500,type:'rod',val:3,island:17,ability:'slowFish',abilityDesc:'Fish moves 30% slower'},
+  {id:'rod_fl2',name:'Permafrost Rod',desc:'Never thaws, never bends',price:1100,type:'rod',val:4,island:17,ability:'noJunk',abilityDesc:'-50% junk chance'},
+  // Ember Fields rods
+  {id:'rod_ef1',name:'Cinder Rod',desc:'Smolders at the tip',price:700,type:'rod',val:3,island:18,ability:'fastReel',abilityDesc:'+40% reel speed'},
+  {id:'rod_ef2',name:'Ash Rod',desc:'Forged in ember fields',price:1600,type:'rod',val:4,island:18,ability:'doubleCatch',abilityDesc:'10% chance for double catch'},
+  {id:'rod_ef3',name:'Blaze Rod',desc:'Burns bright, catches fast',price:2800,type:'rod',val:5,island:18,ability:'fireBurst',abilityDesc:'+30% reel + no junk'},
+  // Sunken Ruins rods
+  {id:'rod_sr1',name:'Stone Rod',desc:'Carved from temple stone',price:1200,type:'rod',val:3,island:19,ability:'longBite2',abilityDesc:'Huge bite window'},
+  {id:'rod_sr2',name:'Relic Rod',desc:'Ancient artifact repurposed',price:2800,type:'rod',val:4,island:19,ability:'luck2',abilityDesc:'+30% rare chance'},
+  {id:'rod_sr3',name:'Guardian Rod',desc:'Blessed by temple spirits',price:4800,type:'rod',val:5,island:19,ability:'coinBoost2',abilityDesc:'+25% coin value'},
+  // Abyssal Trench rods
+  {id:'rod_at1',name:'Pressure Rod',desc:'Withstands crushing depth',price:2000,type:'rod',val:4,island:20,ability:'noJunk',abilityDesc:'-50% junk chance'},
+  {id:'rod_at2',name:'Biolume Rod',desc:'Glows to attract deep fish',price:4500,type:'rod',val:5,island:20,ability:'luck3',abilityDesc:'+50% rare chance'},
+  {id:'rod_at3',name:'Abyss Heart Rod',desc:'Beats with the deep',price:7000,type:'rod',val:6,island:20,ability:'legendaryX2',abilityDesc:'Legendary fish x2 value'},
+  // Wind Temple rods
+  {id:'rod_wt1',name:'Breeze Rod',desc:'Whispers of the wind',price:4500,type:'rod',val:5,island:21,ability:'quickBite',abilityDesc:'Lightning-fast bites'},
+  {id:'rod_wt2',name:'Gale Rod',desc:'Harnesses wind power',price:8000,type:'rod',val:6,island:21,ability:'zephyr',abilityDesc:'+50% XP and coins'},
+  {id:'rod_wt3',name:'Spirit Rod',desc:'Channeling wind spirits',price:13000,type:'rod',val:7,island:21,ability:'divine',abilityDesc:'x2 value, +50% rare, no junk'},
+  // Thunder Fortress rods
+  {id:'rod_tf1',name:'Iron Bolt Rod',desc:'Conducts pure energy',price:6000,type:'rod',val:5,island:22,ability:'fastReel',abilityDesc:'+40% reel speed'},
+  {id:'rod_tf2',name:'Lightning Spear',desc:'A rod that strikes like lightning',price:11000,type:'rod',val:6,island:22,ability:'luck3',abilityDesc:'+50% rare chance'},
+  {id:'rod_tf3',name:'Thor\'s Rod',desc:'Power of the thunder god',price:16000,type:'rod',val:7,island:22,ability:'superFast',abilityDesc:'Super fast cursor'},
+  // Dark Nebula rods
+  {id:'rod_dn1',name:'Starlight Rod',desc:'Woven from captured light',price:14000,type:'rod',val:7,island:23,ability:'luck3',abilityDesc:'+50% rare chance'},
+  {id:'rod_dn2',name:'Dark Star Rod',desc:'Collapsed star core',price:22000,type:'rod',val:8,island:23,ability:'zephyr',abilityDesc:'+50% XP and coins'},
+  // Chaos Rift rods
+  {id:'rod_ch1',name:'Rift Rod',desc:'Tears through reality',price:20000,type:'rod',val:8,island:24,ability:'unbreakable',abilityDesc:'Fish can\'t escape'},
+  {id:'rod_ch2',name:'Entropy Rod',desc:'Decays all resistance',price:35000,type:'rod',val:9,island:24,ability:'divine',abilityDesc:'x2 value, +50% rare, no junk'},
   // ---- BOSS WEAPONS ----
   {id:'boss_w0',name:'Swamp King\'s Bane',desc:'Slays the Swamp King!',price:500,type:'boss_weapon',val:1,island:2,bossWorld:0},
   {id:'boss_w1',name:'Fungi Destroyer',desc:'Slays the Fungi King!',price:2000,type:'boss_weapon',val:2,island:5,bossWorld:1},
@@ -1109,13 +1506,19 @@ function mkPlayer(name,colorIdx){
     waitT:0,biteT:0,reelProg:0,curFish:null,
     toast:null,toastT:0,chatMsg:'',chatT:0,totalEarned:0,
     holdFish:null,holdTimer:0,
-    hasBoat:false,unlockedIslands:[0],
+    hasBoat:false,
     xp:0,level:1,xpToNext:50,
     equippedRod:'rod_m1',ownedRods:['rod_m1'],
     activeQuest:null,questProgress:0,questIsland:-1,
     fishIndex:{},
     bossesDefeated:[],
     bossWeapons:[],
+    galaxiesCleared:[],
+    starClustersCleared:[],
+    pet:null,
+    petX:0,petY:0,
+    fishTank:[],
+    tankPos:null, // {x,y,island} where tank is placed
   };
 }
 
@@ -1124,6 +1527,7 @@ function saveGame(){
   if(!me)return;
   const data={
     name:me.name,colorIdx:me.colorIdx,
+    x:me.x,y:me.y,
     coins:me.coins,bagMax:me.bagMax,bag:me.bag,
     rodLv:me.rodLv,speedBoost:me.speedBoost,owned:me.owned,
     hasBoat:me.hasBoat,equippedRod:me.equippedRod,ownedRods:me.ownedRods,
@@ -1136,8 +1540,30 @@ function saveGame(){
     bossesDefeated:me.bossesDefeated,
     bossWeapons:me.bossWeapons,
     curWorld:curWorld,
+    curGalaxy:curGalaxy,
+    curStarCluster:curStarCluster,
+    galaxiesCleared:me.galaxiesCleared,
+    starClustersCleared:me.starClustersCleared,
+    pet:me.pet,petX:me.petX,petY:me.petY,
+    fishTank:me.fishTank,tankPos:me.tankPos,
+    tourneyBest:tourneyBest,
+    lootedCaves:Array.from(lootedCaves),
+    _fixed_v2:true,
+    gems:gems,
+    completedCombos:completedCombos,
+    treasureMaps:treasureMaps,
+    activeTreasureMap:activeTreasureMap,
+    campfirePos:campfirePos,
+    petTimer:petTimer,
+    petEvolved:petEvolved,
+    fishStreak:fishStreak,
+    streakBestSession:streakBestSession,
   };
-  localStorage.setItem('reelmaster-save',JSON.stringify(data));
+  try{
+    localStorage.setItem('reelmaster-save',JSON.stringify(data));
+  }catch(e){
+    console.warn('Save failed:',e);
+  }
 }
 
 function loadGame(){
@@ -1149,6 +1575,8 @@ function loadGame(){
 function applySave(save){
   if(save.name)me.name=save.name;
   if(save.colorIdx!=null){me.colorIdx=save.colorIdx;me.color=COLORS[save.colorIdx]}
+  if(save.x!=null)me.x=save.x;
+  if(save.y!=null)me.y=save.y;
   me.coins=save.coins||0;me.bagMax=save.bagMax||5;me.bag=save.bag||[];
   me.rodLv=save.rodLv||1;me.speedBoost=save.speedBoost||0;me.owned=save.owned||[];
   me.hasBoat=save.hasBoat||false;
@@ -1172,8 +1600,25 @@ function applySave(save){
   me.totalEarned=save.totalEarned||0;
   me.bossesDefeated=save.bossesDefeated||[];
   me.bossWeapons=save.bossWeapons||[];
+  me.galaxiesCleared=save.galaxiesCleared||[];
+  me.starClustersCleared=save.starClustersCleared||[];
+  me.pet=save.pet||null;me.petX=save.petX||me.x;me.petY=save.petY||me.y;
+  me.fishTank=save.fishTank||[];me.tankPos=save.tankPos||null;
+  if(save.tourneyBest)tourneyBest=save.tourneyBest;
+  if(save.lootedCaves)lootedCaves=new Set(save.lootedCaves);
+  if(save.gems!=null)gems=save.gems;
+  if(save.completedCombos)completedCombos=save.completedCombos;
+  if(save.treasureMaps)treasureMaps=save.treasureMaps;
+  if(save.activeTreasureMap)activeTreasureMap=save.activeTreasureMap;
+  if(save.campfirePos)campfirePos=save.campfirePos;
+  if(save.petTimer!=null)petTimer=save.petTimer;
+  if(save.petEvolved!=null)petEvolved=save.petEvolved;
+  if(save.fishStreak!=null)fishStreak=save.fishStreak;
+  if(save.streakBestSession!=null)streakBestSession=save.streakBestSession;
   if(save.curWorld!=null)curWorld=save.curWorld;
-  if(save.curIsland!=null&&save.curIsland!==curIsland){
+  if(save.curGalaxy!=null)curGalaxy=save.curGalaxy;
+  if(save.curStarCluster!=null)curStarCluster=save.curStarCluster;
+  if(save.curIsland!=null){
     curIsland=save.curIsland;
     genIslandMap(ISLANDS[curIsland]);
   }
@@ -1181,11 +1626,124 @@ function applySave(save){
 
 // Auto-save every 5 seconds
 setInterval(()=>{if(gameStarted&&me)saveGame()},5000);
+// Save when closing/refreshing the tab - never lose progress!
+window.addEventListener('beforeunload',()=>{if(gameStarted&&me)saveGame()});
+// Save on visibility change (switching tabs on mobile/desktop)
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&gameStarted&&me)saveGame()});
 
 // ========== STATE ==========
 let me=null;
 let gameStarted=false;
 
+// ========== TOURNAMENT ==========
+let tourneyActive=false;
+let tourneyTimer=0;
+let tourneyScore=0;
+let tourneyBest=0;
+
+window.startTournament=function(){
+  if(tourneyActive||me.state!=='idle')return;
+  tourneyActive=true;
+  tourneyTimer=60;
+  tourneyScore=0;
+  me.toast={fish:null,msg:'TOURNAMENT START! 60 seconds!'};me.toastT=2;
+  SFX.play('levelup');
+};
+
+// ========== SECRET CAVES ==========
+let lootedCaves=new Set();
+
+// ========== DAY/NIGHT CYCLE ==========
+let dayTime=0.3; // 0=midnight, 0.25=sunrise, 0.5=noon, 0.75=sunset
+let daySpeed=0.008; // full cycle ~125 seconds
+function getDayPhase(){
+  if(dayTime<0.2)return'night';
+  if(dayTime<0.3)return'dawn';
+  if(dayTime<0.7)return'day';
+  if(dayTime<0.8)return'dusk';
+  return'night';
+}
+function getDayBrightness(){
+  if(dayTime>=0.25&&dayTime<=0.75)return 1;
+  if(dayTime<0.2||dayTime>0.8)return 0.35;
+  if(dayTime<0.25)return 0.35+(dayTime-0.2)/0.05*0.65;
+  return 1-(dayTime-0.75)/0.05*0.65;
+}
+
+// ========== WEATHER SYSTEM ==========
+let weather='clear'; // clear, rain, storm, fog
+let weatherTimer=30;
+let raindrops=[];
+let lightningFlash=0;
+function changeWeather(){
+  const roll=Math.random();
+  if(roll<0.45)weather='clear';
+  else if(roll<0.7)weather='rain';
+  else if(roll<0.85)weather='storm';
+  else weather='fog';
+  weatherTimer=rand(25,60);
+  if(weather==='rain'||weather==='storm'){
+    raindrops=[];
+    for(let i=0;i<(weather==='storm'?120:60);i++){
+      raindrops.push({x:Math.random()*400,y:Math.random()*300,spd:rand(150,250)});
+    }
+  }
+}
+
+// ========== FIREFLIES ==========
+let fireflies=[];
+for(let i=0;i<25;i++){
+  fireflies.push({x:Math.random()*MW*T,y:Math.random()*MH*T,vx:rand(-8,8),vy:rand(-8,8),phase:Math.random()*Math.PI*2});
+}
+
+// ========== SHOOTING STARS ==========
+let shootingStars=[];
+let nextShootingStar=rand(5,15);
+
+// ========== FOOTPRINTS ==========
+let footprints=[]; // {x,y,age}
+let lastFootprintT=0;
+
+// ========== FISHING STREAK ==========
+let fishStreak=0;
+let streakTimer=0;
+let streakBestSession=0;
+
+// ========== TREASURE BOTTLES ==========
+let bottles=[]; // {x,y,vx,age,reward}
+let nextBottle=rand(10,25);
+
+// ========== LUCKY FISHING SPOTS ==========
+let luckySpots=[]; // {x,y,timer}
+let nextLuckySpot=rand(15,30);
+let onLuckySpot=false;
+
+// ========== FISH COMBOS ==========
+const FISH_COMBOS=[
+  {name:'Meadow Trio',fish:['Minnow','Goldfish','Perch'],reward:200,xp:50},
+  {name:'Tropical Set',fish:['Clownfish','Parrotfish','Seahorse'],reward:500,xp:80},
+  {name:'Deep Duo',fish:['Anglerfish','Giant Squid'],reward:400,xp:60},
+  {name:'Dragon Collection',fish:['Sand Dragon','Prism Dragon','Sky Dragon'],reward:2000,xp:200},
+  {name:'Legendary Legends',fish:['Phoenix','Kraken','Sky Dragon'],reward:5000,xp:500},
+];
+let completedCombos=[];
+
+// ========== GEMS & MINING ==========
+let gems=0;
+let gemCooldown=0;
+
+// ========== PIRATE TREASURE MAPS ==========
+let treasureMaps=[]; // {island,x,y,reward}
+let activeTreasureMap=null;
+let treasureDigSpot=null;
+
+// ========== FISH EVOLUTION ==========
+let petTimer=0; // tracks how long pet has been active
+let petEvolved=false;
+
+// ========== CAMPFIRE ==========
+let campfirePos=null; // {x,y,island}
+let campfireParticles=[];
 
 // ========== QUESTS ==========
 // Quest templates: type, description, target, reward
@@ -1277,9 +1835,68 @@ const QUEST_TEMPLATES={
     {type:'catch_name',fish:'Emperor Fish',count:5,reward:15000,xp:2500,title:'Emperor\'s Bounty'},
     {type:'catch_count',count:15,reward:20000,xp:2800,title:'Void Master'},
   ],
+  15:[
+    {type:'catch_name',fish:'River Trout',count:4,reward:40,xp:25,title:'Trout Run'},
+    {type:'catch_name',fish:'Dragonfly Larva',count:2,reward:90,xp:45,title:'Bug Catcher'},
+    {type:'catch_count',count:6,reward:60,xp:35,title:'River Haul'},
+    {type:'earn_coins',amount:80,reward:55,xp:30,title:'River Riches'},
+  ],
+  16:[
+    {type:'catch_name',fish:'Coral Goby',count:4,reward:60,xp:30,title:'Goby Grabber'},
+    {type:'catch_name',fish:'Pufferfish',count:2,reward:120,xp:55,title:'Don\'t Pop!'},
+    {type:'catch_name',fish:'Blue Tang',count:1,reward:280,xp:90,title:'Blue Beauty'},
+    {type:'catch_count',count:7,reward:100,xp:50,title:'Bay Bounty'},
+  ],
+  17:[
+    {type:'catch_name',fish:'Frost Minnow',count:4,reward:280,xp:90,title:'Frosty Fingers'},
+    {type:'catch_name',fish:'Ice Crab',count:2,reward:450,xp:150,title:'Cracking Ice'},
+    {type:'catch_name',fish:'Permafrost Eel',count:1,reward:700,xp:200,title:'Frozen Catch'},
+    {type:'catch_count',count:6,reward:380,xp:120,title:'Ice Fishing'},
+  ],
+  18:[
+    {type:'catch_name',fish:'Cinder Fish',count:4,reward:380,xp:130,title:'Playing with Fire'},
+    {type:'catch_name',fish:'Smoke Eel',count:2,reward:550,xp:180,title:'Smoke Screen'},
+    {type:'catch_name',fish:'Inferno Koi',count:1,reward:900,xp:250,title:'Burning Bright'},
+    {type:'earn_coins',amount:800,reward:600,xp:200,title:'Ember Fortune'},
+  ],
+  19:[
+    {type:'catch_name',fish:'Ruin Goby',count:5,reward:700,xp:220,title:'Ruin Raider'},
+    {type:'catch_name',fish:'Mosaic Fish',count:2,reward:1000,xp:280,title:'Mosaic Master'},
+    {type:'catch_name',fish:'Ancient Guardian',count:1,reward:1800,xp:400,title:'Temple Guardian'},
+    {type:'catch_count',count:8,reward:900,xp:250,title:'Ruins Explorer'},
+  ],
+  20:[
+    {type:'catch_name',fish:'Lantern Fish',count:4,reward:1000,xp:300,title:'Light the Way'},
+    {type:'catch_name',fish:'Biolume Jelly',count:2,reward:1500,xp:380,title:'Glow Getter'},
+    {type:'catch_name',fish:'Trench Leviathan',count:1,reward:3500,xp:700,title:'Leviathan Hunt'},
+    {type:'earn_coins',amount:3000,reward:2000,xp:500,title:'Abyss Treasure'},
+  ],
+  21:[
+    {type:'catch_name',fish:'Zephyr Fish',count:5,reward:2500,xp:550,title:'Zephyr Chaser'},
+    {type:'catch_name',fish:'Gale Shark',count:2,reward:3500,xp:750,title:'Gale Force'},
+    {type:'catch_name',fish:'Wind Spirit',count:1,reward:8500,xp:1600,title:'Spirit Caller'},
+    {type:'catch_count',count:10,reward:4000,xp:850,title:'Temple Offering'},
+  ],
+  22:[
+    {type:'catch_name',fish:'Volt Minnow',count:5,reward:3500,xp:650,title:'Shock Value'},
+    {type:'catch_name',fish:'Thunder Crab',count:2,reward:5000,xp:900,title:'Crab Zapper'},
+    {type:'catch_name',fish:'Storm Titan',count:1,reward:7000,xp:1100,title:'Titan Fall'},
+    {type:'earn_coins',amount:8000,reward:6000,xp:1200,title:'Fortress Plunder'},
+  ],
+  23:[
+    {type:'catch_name',fish:'Dark Matter Fish',count:4,reward:6000,xp:900,title:'Dark Matters'},
+    {type:'catch_name',fish:'Supernova Ray',count:1,reward:9000,xp:1300,title:'Star Burst'},
+    {type:'catch_count',count:8,reward:7000,xp:1100,title:'Nebula Sweep'},
+  ],
+  24:[
+    {type:'catch_name',fish:'Rift Walker',count:4,reward:8000,xp:1100,title:'Walk the Rift'},
+    {type:'catch_name',fish:'Reality Breaker',count:1,reward:18000,xp:2500,title:'Break Reality'},
+    {type:'earn_coins',amount:15000,reward:12000,xp:2000,title:'Chaos Riches'},
+    {type:'catch_count',count:10,reward:10000,xp:1500,title:'Chaos Harvest'},
+  ],
 };
 
-const QUEST_NAMES=['Old Pete','Captain Salty','Fisher Fred','Granny Wave','Big Jim','Lil Finn','Sailor Sue','Mermaid Mae','Crusty','Skipper Sam','Storm Sister','Dragon Sage','Void Walker','Star Guide','Final Elder'];
+const QUEST_NAMES=['Old Pete','Captain Salty','Fisher Fred','Granny Wave','Big Jim','Lil Finn','Sailor Sue','Mermaid Mae','Crusty','Skipper Sam','Storm Sister','Dragon Sage','Void Walker','Star Guide','Final Elder','River Nan','Coral Cal','Frosty Faye','Ember Ed','Ruin Keeper','Deep Dina','Wind Monk','Thunder Tom','Nebula Nyx','Chaos Carl'];
 let time=0;
 let camX=0,camY=0;
 
@@ -1290,7 +1907,7 @@ function hide(id){$(id).classList.add('hidden')}
 function rand(a,b){return Math.random()*(b-a)+a}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function tileAt(px,py){const tx=Math.floor(px/T),ty=Math.floor(py/T);if(tx<0||ty<0||tx>=MW||ty>=MH)return-1;return map[ty][tx]}
-function walkable(px,py){const t=tileAt(px,py);return t===0||t===2||t===3||t===4||t===5}
+function walkable(px,py){const t=tileAt(px,py);return t===0||t===2||t===3||t===4||t===5||t===7}
 function nearWater(px,py){for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(tileAt(px+dx*T,py+dy*T)===1)return true;return false}
 function onShop(px,py){return tileAt(px,py)===3}
 
@@ -1307,15 +1924,32 @@ function jp(c){if(justKeys[c]){justKeys[c]=false;return true}return false}
 
 // ========== START GAME ==========
 function startSolo(){
+  SFX.init();
   const name=$('name-input').value.trim()||'Player'+Math.floor(Math.random()*999);
   me=mkPlayer(name,selAvatar);
   const save=loadGame();
-  if(save)applySave(save);
+  if(save){
+    // One-time save fix: if player was level 13 but should be 15 in world 3
+    if(!save._fixed_v2&&save.level>=12&&save.level<=14){
+      save.level=15;save.xp=0;save.xpToNext=Math.floor(50+15*20);
+      save.curWorld=2; // world 3 (0-indexed)
+      save.curIsland=save.curIsland; // keep island but let them teleport
+      save._fixed_v2=true;
+    }
+    applySave(save);
+    // Only use safe spawn if save had no position or position is invalid
+    if(save.x==null||save.y==null||!walkable(me.x,me.y)){
+      const sp=findSafeSpawn();me.x=sp.x;me.y=sp.y;
+    }
+  }else{
+    const sp=findSafeSpawn();me.x=sp.x;me.y=sp.y;
+  }
   me.name=name;me.colorIdx=selAvatar;me.color=COLORS[selAvatar];
-  const sp=findSafeSpawn();me.x=sp.x;me.y=sp.y;
   gameStarted=true;
   hide('screen-title');
   showGameUI();
+  // Always save immediately on start to lock in correct data
+  saveGame();
 }
 
 $('name-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.stopPropagation();startSolo()}});
@@ -1340,8 +1974,11 @@ function showGameUI(){
   $('bp-btn').style.display='block';
   $('admin-btn').style.display='block';
   $('island-name').style.display='block';
+  $('mute-btn').style.display='block';
+  $('tourney-btn').style.display='block';
   updateIslandName();
   startTutorial();
+  MUSIC.start();
 }
 
 // ========== TUTORIAL ==========
@@ -1465,6 +2102,19 @@ function update(dt){
   const p=me;
   const spd=(60+p.speedBoost*20)*dt;
 
+  // Tournament timer
+  if(tourneyActive){
+    tourneyTimer-=dt;
+    if(tourneyTimer<=0){
+      tourneyActive=false;
+      if(tourneyScore>tourneyBest)tourneyBest=tourneyScore;
+      me.toast={fish:null,msg:'TIME UP! Score: $'+tourneyScore+(tourneyScore>=tourneyBest?' NEW BEST!':'')};me.toastT=4;
+      const reward=Math.floor(tourneyScore*0.5);
+      me.coins+=reward;me.totalEarned+=reward;
+      SFX.play('boss_win');
+    }
+  }
+
   // Boss fight update
   if(bossFight){
     const bossSpeed=30+curWorld*15;
@@ -1492,7 +2142,9 @@ function update(dt){
         const dmg=(10+me.rodLv*2)*weaponBonus;
         bossHP-=dmg;
         bossDmgTimer=0.3;
+        SFX.play('boss_hit');
         if(bossHP<=0){
+          SFX.play('boss_win');
           bossFight=false;bossActive=false;
           me.bossesDefeated.push(curWorld);
           const reward=5000*(curWorld+1);
@@ -1556,9 +2208,72 @@ function update(dt){
         }
       }
       if(!startedBoss){
-        if(onShop(p.x,p.y))openShop();
-        else if(nearQuestGiver(p.x,p.y))openQuest();
-        else if(nearWater(p.x,p.y)){p.state='casting';p.castPow=0;p.castDir=1}
+        // Secret cave check
+        const pt=tileAt(me.x,me.y);
+        if(pt===7){
+          const caveKey=curIsland+'-'+Math.floor(me.x/T)+'-'+Math.floor(me.y/T);
+          if(!lootedCaves.has(caveKey)){
+            lootedCaves.add(caveKey);
+            const roll=Math.random();
+            if(roll<0.3){
+              const amt=Math.floor(50+Math.random()*200)*(1+curWorld);
+              me.coins+=amt;me.totalEarned+=amt;
+              me.toast={fish:null,msg:'SECRET! +$'+amt};me.toastT=2.5;
+            }else if(roll<0.7){
+              const rareFish=FISH.filter(f=>f.rarity==='rare'||f.rarity==='epic');
+              if(rareFish.length>0&&me.bag.length<me.bagMax){
+                const rf=rareFish[Math.floor(Math.random()*rareFish.length)];
+                const caught={...rf,size:Math.round((rf.minSz+Math.random()*(rf.maxSz-rf.minSz))*10)/10};
+                me.bag.push(caught);
+                me.toast={fish:caught,msg:'SECRET FISH!'};me.toastT=3;
+                me.holdFish=caught;me.holdTimer=9999;
+              }else{
+                const amt=100*(1+curWorld);me.coins+=amt;me.totalEarned+=amt;
+                me.toast={fish:null,msg:'SECRET! +$'+amt};me.toastT=2.5;
+              }
+            }else{
+              const xpAmt=50+curWorld*20;
+              me.xp+=xpAmt;
+              while(me.xp>=me.xpToNext){me.xp-=me.xpToNext;me.level++;me.xpToNext=Math.floor(50+me.level*20)}
+              me.toast={fish:null,msg:'SECRET! +'+xpAmt+'XP'};me.toastT=2.5;
+            }
+            SFX.play('catch');
+            saveGame();
+          }else{
+            me.toast={fish:null,msg:'Already explored!'};me.toastT=1.5;
+          }
+        }
+        else{
+          // Check gem mining first
+          let handled=false;
+          if(gemCooldown<=0){
+            for(const gn of gemNodes){
+              if(gn.mined)continue;
+              const gd=Math.sqrt(Math.pow(me.x-gn.x,2)+Math.pow(me.y-gn.y,2));
+              if(gd<T*2){
+                gn.mined=true;gems++;gemCooldown=2;
+                me.toast={fish:null,msg:'MINED A GEM! ('+gems+' total)'};me.toastT=2;
+                SFX.play('catch');saveGame();handled=true;break;
+              }
+            }
+          }
+          // Treasure map dig
+          if(!handled&&activeTreasureMap&&activeTreasureMap.island===curIsland){
+            const tmDist=Math.sqrt(Math.pow(me.x-activeTreasureMap.x,2)+Math.pow(me.y-activeTreasureMap.y,2));
+            if(tmDist<T*2){
+              me.coins+=activeTreasureMap.reward;me.totalEarned+=activeTreasureMap.reward;
+              me.toast={fish:null,msg:'DUG UP TREASURE! +$'+activeTreasureMap.reward};me.toastT=3;
+              SFX.play('boss_win');
+              activeTreasureMap=null;saveGame();handled=true;
+            }
+          }
+          // Normal interactions
+          if(!handled){
+            if(onShop(p.x,p.y))openShop();
+            else if(nearQuestGiver(p.x,p.y))openQuest();
+            else if(nearWater(p.x,p.y)){p.state='casting';p.castPow=0;p.castDir=1;SFX.play('cast')}
+          }
+        }
       }
     }
   }
@@ -1578,11 +2293,11 @@ function update(dt){
       const ab2=p===me?getRodAbility():'none';
       let wait=rand(1.5,4.5);
       if(ab2==='quickBite')wait*=0.5;
-      p.bobX=bxx;p.bobY=byy;p.state='waiting';p.waitT=wait;
+      p.bobX=bxx;p.bobY=byy;p.state='waiting';p.waitT=wait;SFX.play('splash');
     }
   }
   if(p.state==='waiting'){p.waitT-=dt;if(p.waitT<=0){
-    p.state='bite';
+    p.state='bite';SFX.play('bite');
     const ab3=p===me?getRodAbility():'none';
     let bt=2;
     if(ab3==='longBite')bt=3;
@@ -1649,7 +2364,32 @@ function update(dt){
       }
       p.reelProg=clamp(p.reelProg,-5,100);
       if(p.reelProg>=100){
-        if(p.bag.length<p.bagMax){p.bag.push(f);p.toast={fish:f,msg:'CAUGHT!'};p.toastT=2.5;p.holdFish=f;p.holdTimer=9999;
+        SFX.play('catch');
+        // Fishing streak!
+        if(p===me&&f.rarity!=='junk'){
+          fishStreak++;streakTimer=8;
+          if(fishStreak>streakBestSession)streakBestSession=fishStreak;
+          if(fishStreak>=3){
+            const streakBonus=Math.floor(fishVal(f)*0.1*fishStreak);
+            me.coins+=streakBonus;me.totalEarned+=streakBonus;
+          }
+        }
+        // Check fish combos
+        if(p===me&&f.rarity!=='junk'){
+          for(const combo of FISH_COMBOS){
+            if(completedCombos.includes(combo.name))continue;
+            const hasFish=combo.fish.every(fn=>me.fishIndex[fn]&&me.fishIndex[fn].count>0);
+            if(hasFish){
+              completedCombos.push(combo.name);
+              me.coins+=combo.reward;me.totalEarned+=combo.reward;
+              me.xp+=combo.xp;
+              while(me.xp>=me.xpToNext){me.xp-=me.xpToNext;me.level++;me.xpToNext=Math.floor(50+me.level*20)}
+              me.toast={fish:null,msg:'COMBO! '+combo.name+' +$'+combo.reward};me.toastT=3.5;
+              SFX.play('boss_win');
+            }
+          }
+        }
+        if(p.bag.length<p.bagMax){p.bag.push(f);if(tourneyActive&&p===me){tourneyScore+=fishVal(f)}p.toast={fish:f,msg:'CAUGHT!'+(fishStreak>=3?' STREAK x'+fishStreak+'!':'')};p.toastT=2.5;p.holdFish=f;p.holdTimer=9999;
           // Double catch ability + XP gain
           if(p===me){
             const ab4=ab;
@@ -1665,7 +2405,9 @@ function update(dt){
             if(ab==='zephyr')xpGain=Math.round(xpGain*1.5);
           }
           p.xp+=xpGain;
+          const prevLv=p.level;
           while(p.xp>=p.xpToNext){p.xp-=p.xpToNext;p.level++;p.xpToNext=Math.floor(50+p.level*20)}
+          if(p.level>prevLv){SFX.play('levelup');saveGame()}
           // Quest progress
           if(p===me&&me.activeQuest){
             const q=me.activeQuest;
@@ -1683,20 +2425,151 @@ function update(dt){
         else{p.toast={fish:f,msg:'BAG FULL!',full:true};p.toastT=2.5}
         p.state='idle';p.curFish=null;
       }
-      if(p.reelProg<-4){p.toast={fish:f,msg:'ESCAPED!',lost:true};p.toastT=1.5;p.state='idle';p.curFish=null}
+      if(p.reelProg<-4){SFX.play('escape');p.toast={fish:f,msg:'ESCAPED!',lost:true};p.toastT=1.5;p.state='idle';p.curFish=null;if(p===me){fishStreak=0;streakTimer=0}}
     }
   }
   if(p.toastT>0){p.toastT-=dt;if(p.toastT<=0)p.toast=null}
   if(p.holdTimer>0){p.holdTimer-=dt;if(p.holdTimer<=0)p.holdFish=null}
 
+  // ---- DAY/NIGHT CYCLE UPDATE ----
+  dayTime+=daySpeed*dt;
+  if(dayTime>=1)dayTime-=1;
+
+  // ---- WEATHER UPDATE ----
+  weatherTimer-=dt;
+  if(weatherTimer<=0)changeWeather();
+  if(lightningFlash>0)lightningFlash-=dt*3;
+  if(weather==='storm'&&Math.random()<dt*0.3)lightningFlash=1;
+
+  // ---- FIREFLIES UPDATE (only at night) ----
+  if(getDayPhase()==='night'||getDayPhase()==='dusk'){
+    for(const ff of fireflies){
+      ff.x+=ff.vx*dt;ff.y+=ff.vy*dt;
+      ff.phase+=dt*2;
+      if(Math.random()<dt*0.5){ff.vx=rand(-8,8);ff.vy=rand(-8,8)}
+      if(ff.x<0)ff.x=MW*T;if(ff.x>MW*T)ff.x=0;
+      if(ff.y<0)ff.y=MH*T;if(ff.y>MH*T)ff.y=0;
+    }
+  }
+
+  // ---- SHOOTING STARS ----
+  nextShootingStar-=dt;
+  if(nextShootingStar<=0&&(getDayPhase()==='night')){
+    shootingStars.push({x:Math.random()*RW,y:rand(5,RH*0.3),vx:rand(100,200),vy:rand(30,80),life:1.5});
+    nextShootingStar=rand(4,12);
+  }
+  for(let i=shootingStars.length-1;i>=0;i--){
+    const s=shootingStars[i];
+    s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt;
+    if(s.life<=0)shootingStars.splice(i,1);
+  }
+
+  // ---- FOOTPRINTS ----
+  if(p.state==='idle'&&(keysDown['KeyW']||keysDown['KeyS']||keysDown['KeyA']||keysDown['KeyD'])){
+    lastFootprintT+=dt;
+    if(lastFootprintT>0.3){
+      const tile=tileAt(p.x,p.y);
+      if(tile===2){// only on sand
+        footprints.push({x:p.x,y:p.y,age:0});
+        if(footprints.length>30)footprints.shift();
+      }
+      lastFootprintT=0;
+    }
+  }
+  for(let i=footprints.length-1;i>=0;i--){
+    footprints[i].age+=dt;
+    if(footprints[i].age>8)footprints.splice(i,1);
+  }
+
+  // ---- FISHING STREAK ----
+  if(streakTimer>0){streakTimer-=dt;if(streakTimer<=0){fishStreak=0}}
+
+  // ---- TREASURE BOTTLES ----
+  nextBottle-=dt;
+  if(nextBottle<=0){
+    // Spawn a bottle on a random water tile near player
+    const bx2=p.x+rand(-80,80),by2=p.y+rand(-80,80);
+    if(tileAt(bx2,by2)===1){
+      const reward=Math.random()<0.3?{type:'xp',amt:Math.floor(rand(10,50))}:{type:'coins',amt:Math.floor(rand(20,150)*(1+curWorld*0.5))};
+      bottles.push({x:bx2,y:by2,vx:rand(-3,3),age:0,reward});
+    }
+    nextBottle=rand(12,30);
+  }
+  for(let i=bottles.length-1;i>=0;i--){
+    const b=bottles[i];b.x+=b.vx*dt;b.age+=dt;
+    if(b.age>20){bottles.splice(i,1);continue}
+    // Check if player walks near it
+    const dist=Math.sqrt(Math.pow(p.x-b.x,2)+Math.pow(p.y-b.y,2));
+    if(dist<T*1.5){
+      if(b.reward.type==='coins'){me.coins+=b.reward.amt;me.totalEarned+=b.reward.amt;me.toast={fish:null,msg:'BOTTLE! +$'+b.reward.amt};me.toastT=2}
+      else{me.xp+=b.reward.amt;while(me.xp>=me.xpToNext){me.xp-=me.xpToNext;me.level++;me.xpToNext=Math.floor(50+me.level*20)};me.toast={fish:null,msg:'BOTTLE! +'+b.reward.amt+'XP'};me.toastT=2}
+      SFX.play('buy');bottles.splice(i,1);
+    }
+  }
+
+  // ---- LUCKY FISHING SPOTS ----
+  nextLuckySpot-=dt;
+  if(nextLuckySpot<=0){
+    // Find a random water tile
+    for(let tries=0;tries<20;tries++){
+      const lx=rand(4,MW-4)*T,ly=rand(4,MH-4)*T;
+      if(tileAt(lx,ly)===1){luckySpots.push({x:lx,y:ly,timer:rand(15,25)});break}
+    }
+    nextLuckySpot=rand(18,35);
+  }
+  onLuckySpot=false;
+  for(let i=luckySpots.length-1;i>=0;i--){
+    luckySpots[i].timer-=dt;
+    if(luckySpots[i].timer<=0){luckySpots.splice(i,1);continue}
+    const dist=Math.sqrt(Math.pow(p.x-luckySpots[i].x,2)+Math.pow(p.y-luckySpots[i].y,2));
+    if(dist<T*2)onLuckySpot=true;
+  }
+
+  // ---- GEM COOLDOWN ----
+  if(gemCooldown>0)gemCooldown-=dt;
+
+  // ---- PET EVOLUTION TIMER ----
+  if(me.pet&&!petEvolved){
+    petTimer+=dt;
+    if(petTimer>=180){// 3 minutes = evolve!
+      petEvolved=true;
+      me.pet.evolved=true;
+      me.pet.nickname=(me.pet.nickname||me.pet.name)+' +';
+      me.toast={fish:null,msg:'PET EVOLVED! '+me.pet.nickname};me.toastT=3;
+      SFX.play('levelup');
+    }
+  }
+
+  // ---- CAMPFIRE PARTICLES ----
+  if(campfirePos&&campfirePos.island===curIsland){
+    if(Math.random()<dt*15){
+      campfireParticles.push({x:campfirePos.x+rand(-3,3),y:campfirePos.y,vy:rand(-20,-40),life:rand(0.5,1.5),col:Math.random()<0.5?'#ff6020':'#ffcc00'});
+    }
+    for(let i=campfireParticles.length-1;i>=0;i--){
+      const cp=campfireParticles[i];
+      cp.y+=cp.vy*dt;cp.life-=dt;cp.x+=rand(-5,5)*dt;
+      if(cp.life<=0)campfireParticles.splice(i,1);
+    }
+  }
 
   camX=clamp(p.x-RW/2,0,MW*T-RW);
   camY=clamp(p.y-RH/2,0,MH*T-RH);
 
   updateHUD();
+  // Pet follows player with lag
+  if(me.pet){
+    const pdx=me.x-me.petX,pdy=me.y-me.petY;
+    const pdist=Math.sqrt(pdx*pdx+pdy*pdy);
+    if(pdist>20){
+      me.petX+=pdx*0.05;
+      me.petY+=pdy*0.05;
+    }
+  }
+
   updateBP();
   updateLB();
   updateQuestTracker();
+  MUSIC.update(dt);
 }
 
 function updateHUD(){
@@ -1714,13 +2587,31 @@ function updateHUD(){
   else if(onShop(me.x,me.y))st='Press SPACE for Shop';
   else if(nearQuestGiver(me.x,me.y))st='Press SPACE to talk';
   else if(nearWater(me.x,me.y))st='Press SPACE to cast';
+  else if(tileAt(me.x,me.y)===7)st='Press SPACE to explore cave!';
   else st='Walk to water to fish | Visit shop or quest giver';
   if(bossActive && bossPos.x>0 && me.state==='idle'){
     const bdist=Math.sqrt(Math.pow(me.x-bossPos.x,2)+Math.pow(me.y-bossPos.y,2));
     if(bdist<T*3)st='Press SPACE to fight the BOSS!';
   }
   if(bossFight)st='BOSS FIGHT! Press SPACE to attack!';
-  $('h-status').textContent=st;
+  // Add weather/time indicators
+  const timeIcon=getDayPhase()==='night'?'\u{1F319}':getDayPhase()==='dawn'?'\u{1F305}':getDayPhase()==='dusk'?'\u{1F307}':'\u{2600}';
+  const weatherIcon=weather==='rain'?'\u{1F327}':weather==='storm'?'\u{26C8}':weather==='fog'?'\u{1F32B}':'';
+  $('h-status').textContent=timeIcon+weatherIcon+' '+st;
+  // Streak display
+  const sd=$('streak-display');
+  if(fishStreak>=3){
+    sd.style.display='block';
+    sd.textContent='\u{1F525} STREAK x'+fishStreak+(fishStreak>=5?' BONUS +'+Math.floor(fishStreak*10)+'%':'');
+    sd.className=fishStreak>=7?'hot':'';
+  }else{sd.style.display='none'}
+  // Weather display
+  const wd=$('weather-display');
+  if(weather!=='clear'||getDayPhase()==='night'){
+    wd.style.display='block';
+    const wText=weather==='storm'?'STORM - rare fish!':weather==='rain'?'Rain':weather==='fog'?'Fog - rare fish!':getDayPhase()==='night'?'Night - Moonfish!':'';
+    wd.textContent=wText;
+  }else{wd.style.display='none'}
 }
 
 let bpOpen=false;
@@ -1734,7 +2625,9 @@ function toggleBackpack(){
 
 window.switchBpTab=function(tab){
   bpTab=tab;
-  document.querySelectorAll('.bp-tab').forEach(t=>t.classList.toggle('active',t.textContent.toLowerCase()===tab));
+  const tabNames={fish:'bag',index:'index',rods:'rods',items:'items',tank:'tank'};
+  const matchText=tabNames[tab]||tab;
+  document.querySelectorAll('.bp-tab').forEach(t=>t.classList.toggle('active',t.textContent.toLowerCase()===matchText));
   renderBpTab();
 };
 
@@ -1743,8 +2636,65 @@ function renderBpTab(){
   if(bpTab==='fish')renderFishTab(el);
   else if(bpTab==='index')renderIndexTab(el);
   else if(bpTab==='rods')renderRodsTab(el);
+  else if(bpTab==='tank')renderTankTab(el);
   else renderItemsTab(el);
 }
+
+function renderTankTab(el){
+  let html='<h4 style="color:#5be0f5">Fish Tank ('+me.fishTank.length+'/8)</h4>';
+  // Place tank button
+  html+='<div style="text-align:center;margin-bottom:8px"><button class="bp-item-btn bp-equip-btn" onclick="placeTank()" style="padding:5px 14px">PLACE TANK HERE</button>';
+  if(me.tankPos)html+=' <span style="color:#4ade80;font-size:10px">Tank placed!</span>';
+  html+='</div>';
+  if(me.fishTank.length===0){
+    html+='<div style="color:#3a3a5e;text-align:center;padding:14px">Your tank is empty!<br>Add fish from the Fish tab.</div>';
+  }else{
+    for(let i=0;i<me.fishTank.length;i++){
+      const f=me.fishTank[i];
+      html+='<div class="bp-item"><div class="bp-item-info"><div class="bp-item-icon" style="background:'+RARITY_COL[f.rarity]+'">&#9641;</div><div><div class="bp-item-name" style="color:'+RARITY_COL[f.rarity]+'">'+f.name+'</div><div class="bp-item-detail">'+f.size+'cm</div></div></div>';
+      html+='<button class="bp-item-btn bp-sell-btn" onclick="removeTank('+i+')">REMOVE</button></div>';
+    }
+  }
+  const addable=me.bag.filter(f=>f.rarity!=='junk');
+  if(addable.length>0&&me.fishTank.length<8){
+    html+='<div style="color:#5a7a9a;font-size:11px;margin-top:8px;text-align:center">Add from bag:</div>';
+    for(let i=0;i<me.bag.length;i++){
+      const f=me.bag[i];
+      if(f.rarity==='junk')continue;
+      html+='<div class="bp-item"><div class="bp-item-info"><div class="bp-item-icon" style="background:'+RARITY_COL[f.rarity]+'">&#9641;</div><div><div class="bp-item-name" style="color:'+RARITY_COL[f.rarity]+'">'+f.name+'</div><div class="bp-item-detail">'+f.size+'cm</div></div></div>';
+      html+='<button class="bp-item-btn bp-equip-btn" onclick="addToTank('+i+')">DISPLAY</button></div>';
+    }
+  }
+  el.innerHTML=html;
+}
+
+window.addToTank=function(i){
+  if(me.fishTank.length>=8)return;
+  const f=me.bag[i];
+  if(!f||f.rarity==='junk')return;
+  me.fishTank.push({...f});
+  me.bag.splice(i,1);
+  SFX.play('pet');
+  updateBP();saveGame();
+};
+window.removeTank=function(i){
+  const f=me.fishTank[i];
+  if(!f)return;
+  if(me.bag.length<me.bagMax){
+    me.bag.push(f);
+    me.fishTank.splice(i,1);
+  }else{
+    me.fishTank.splice(i,1);
+  }
+  updateBP();saveGame();
+};
+window.placeTank=function(){
+  if(!me)return;
+  me.tankPos={x:me.x,y:me.y,island:curIsland};
+  SFX.play('buy');
+  me.toast={fish:null,msg:'Tank placed!'};me.toastT=1.5;
+  updateBP();saveGame();
+};
 
 function renderIndexTab(el){
   // Group fish by rarity
@@ -1805,6 +2755,7 @@ function renderFishTab(el){
       <div style="display:flex;gap:3px">
         <button class="bp-item-btn" style="border-color:#b08020;background:${fav?'#f5a623':'#1a1a3e'};color:${fav?'#111':'#f5a623'};font-size:11px;padding:3px 6px" onclick="favFish(${i})" title="Favorite">&#9733;</button>
         <button class="bp-item-btn ${isHeld?'bp-equipped':'bp-equip-btn'}" onclick="holdFishSlot(${i})">${isHeld?'PUT DOWN':'HOLD'}</button>
+        <button class="bp-item-btn bp-equip-btn" onclick="setPet(${i})">${me.pet&&me.pet.name===f.name?'UNPET':'PET'}</button>
         ${fav?'<span class="bp-equipped" style="color:#f5a623">LOCKED</span>':`<button class="bp-item-btn bp-sell-btn" onclick="sellFish(${i})">SELL</button>`}
       </div>
     </div>`;
@@ -1816,6 +2767,17 @@ window.favFish=function(i){
   f.fav=!f.fav;
   saveGame();
   renderBpTab();
+};
+
+window.setPet=function(i){
+  const f=me.bag[i];
+  if(!f)return;
+  if(me.pet&&me.pet.name===f.name){me.pet=null;SFX.play('pet');updateBP();saveGame();return}
+  const nickname=prompt('Name your pet '+f.name+':');
+  me.pet={name:f.name,rarity:f.rarity,nickname:nickname||f.name};
+  me.petX=me.x-20;me.petY=me.y;
+  SFX.play('pet');
+  updateBP();saveGame();
 };
 
 function renderRodsTab(el){
@@ -1881,7 +2843,79 @@ function renderItemsTab(el){
   if(!me.hasBoat&&!me.owned.includes('boots')){
     html+='<div style="color:#3a3a5e;text-align:center;padding:14px">No items yet - visit the shop!</div>';
   }
+  // Gems
+  if(gems>0){
+    html+=`<div class="bp-item">
+      <div class="bp-item-info">
+        <div class="bp-item-icon" style="background:#2a1a4a">&#128142;</div>
+        <div>
+          <div class="bp-item-name" style="color:#a78bfa">Gems</div>
+          <div class="bp-item-detail">${gems} collected</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  // Campfire
+  html+=`<div class="bp-item">
+    <div class="bp-item-info">
+      <div class="bp-item-icon" style="background:#4a2a0a">&#128293;</div>
+      <div>
+        <div class="bp-item-name" style="color:#f59e0b">Campfire</div>
+        <div class="bp-item-detail">${campfirePos?'Placed on island':'Place anywhere!'}</div>
+      </div>
+    </div>
+    <button class="bp-item-btn bp-equip-btn" onclick="placeCampfire()">PLACE</button>
+  </div>`;
+  // Treasure maps
+  if(treasureMaps.length>0){
+    html+='<div style="color:#ffd700;font-size:11px;margin-top:8px;text-align:center">TREASURE MAPS:</div>';
+    for(let i=0;i<treasureMaps.length;i++){
+      const tm=treasureMaps[i];
+      const iName=ISLANDS[tm.island]?ISLANDS[tm.island].name:'Unknown';
+      html+=`<div class="bp-item">
+        <div class="bp-item-info">
+          <div class="bp-item-icon" style="background:#3a2a0a">&#128506;</div>
+          <div>
+            <div class="bp-item-name" style="color:#ffd700">Map: ${iName}</div>
+            <div class="bp-item-detail">Reward: ~$${tm.reward}</div>
+          </div>
+        </div>
+        <button class="bp-item-btn bp-sail-btn" onclick="activateMap(${i})">USE</button>
+      </div>`;
+    }
+  }
+  // Fish combos
+  html+='<div style="color:#5be0f5;font-size:11px;margin-top:8px;text-align:center">FISH COMBOS:</div>';
+  for(const combo of FISH_COMBOS){
+    const done=completedCombos.includes(combo.name);
+    const progress=combo.fish.filter(fn=>me.fishIndex[fn]&&me.fishIndex[fn].count>0).length;
+    html+=`<div class="bp-item" style="${done?'border-color:#4ade80':''}">
+      <div class="bp-item-info">
+        <div>
+          <div class="bp-item-name" style="color:${done?'#4ade80':'#ccc'}">${combo.name} ${done?'&#10003;':''}</div>
+          <div class="bp-item-detail">${combo.fish.join(', ')} (${progress}/${combo.fish.length})</div>
+        </div>
+      </div>
+      <span style="color:#ffd700;font-size:10px">$${combo.reward}</span>
+    </div>`;
+  }
+  // Streak info
+  html+=`<div style="color:#5a7a9a;font-size:10px;margin-top:8px;text-align:center">Best streak this session: ${streakBestSession}</div>`;
   el.innerHTML=html;
+}
+
+window.placeCampfire=function(){
+  campfirePos={x:me.x,y:me.y,island:curIsland};
+  me.toast={fish:null,msg:'Campfire placed!'};me.toastT=2;
+  SFX.play('buy');saveGame();renderBpTab();
+};
+
+window.activateMap=function(idx){
+  const tm=treasureMaps[idx];
+  activeTreasureMap=tm;
+  treasureMaps.splice(idx,1);
+  me.toast={fish:null,msg:'Map activated! Go to '+ISLANDS[tm.island].name+'!'};me.toastT=3;
+  SFX.play('buy');saveGame();renderBpTab();
 }
 
 window.holdFishSlot=function(i){
@@ -1920,8 +2954,8 @@ function updateLB(){
 }
 
 function trackEarn(v){if(me.activeQuest&&me.activeQuest.type==='earn_coins')me.questProgress+=v}
-window.sellFish=function(i){const f=me.bag[i];if(!f||f.fav)return;if(me.holdFish&&me.holdFish.name===f.name&&me.holdFish.size===f.size){me.holdFish=null;me.holdTimer=0}const v=fishVal(f);me.coins+=v;me.totalEarned=(me.totalEarned||0)+v;trackEarn(v);me.bag.splice(i,1);updateBP();if($('shop-modal').style.display==='flex')openShop();saveGame()};
-window.sellAll=function(){const kept=[];for(const f of me.bag){if(f.fav){kept.push(f);continue}if(me.holdFish&&me.holdFish.name===f.name&&me.holdFish.size===f.size){me.holdFish=null;me.holdTimer=0}const v=fishVal(f);me.coins+=v;me.totalEarned=(me.totalEarned||0)+v;trackEarn(v)}me.bag=kept;updateBP();if($('shop-modal').style.display==='flex')openShop();saveGame()};
+window.sellFish=function(i){const f=me.bag[i];if(!f||f.fav)return;if(me.holdFish&&me.holdFish.name===f.name&&me.holdFish.size===f.size){me.holdFish=null;me.holdTimer=0}const v=fishVal(f);me.coins+=v;me.totalEarned=(me.totalEarned||0)+v;trackEarn(v);me.bag.splice(i,1);SFX.play('sell');updateBP();if($('shop-modal').style.display==='flex')openShop();saveGame()};
+window.sellAll=function(){const kept=[];for(const f of me.bag){if(f.fav){kept.push(f);continue}if(me.holdFish&&me.holdFish.name===f.name&&me.holdFish.size===f.size){me.holdFish=null;me.holdTimer=0}const v=fishVal(f);me.coins+=v;me.totalEarned=(me.totalEarned||0)+v;trackEarn(v)}me.bag=kept;SFX.play('sell');updateBP();if($('shop-modal').style.display==='flex')openShop();saveGame()};
 
 // ========== SHOP ==========
 function openShop(){
@@ -1960,6 +2994,7 @@ window.buyBossWeapon=function(uid){
   if(me.bossWeapons.includes(uid))return;
   me.coins-=u.price;
   me.bossWeapons.push(uid);
+  SFX.play('buy');
   saveGame();
   openShop();
 };
@@ -1977,6 +3012,7 @@ window.buyUp=function(uid){
     if(u.type==='speed')me.speedBoost=u.val;
     if(u.type==='boat')me.hasBoat=true;
   }
+  SFX.play('buy');
   saveGame();
   openShop();
 };
@@ -2078,7 +3114,9 @@ window.turnInQuest=function(){
   me.coins+=q.reward;
   me.totalEarned=(me.totalEarned||0)+q.reward;
   me.xp+=q.xp;
+  const prevLvQ=me.level;
   while(me.xp>=me.xpToNext){me.xp-=me.xpToNext;me.level++;me.xpToNext=Math.floor(50+me.level*20)}
+  if(me.level>prevLvQ)SFX.play('levelup');
   me.activeQuest=null;me.questProgress=0;me.questIsland=-1;
   saveGame();
   closeQuest();
@@ -2179,8 +3217,8 @@ function renderTravelModal(){
     const bossDefeated=me.bossesDefeated.includes(cw.id);
     html+=`<div style="text-align:center;font-size:11px;color:${bossDefeated?'#4ade80':'#ff4444'};margin-bottom:8px">Boss: ${cw.bossName} ${bossDefeated?'DEFEATED':'UNDEFEATED'}</div>`;
   }
-  // Islands for this world tab
-  const worldIslands=ISLANDS.filter(i=>i.world===travelWorldTab);
+  // Islands for this world tab (boss island always last)
+  const worldIslands=ISLANDS.filter(i=>i.world===travelWorldTab).sort((a,b)=>(a.isBossIsland?1:0)-(b.isBossIsland?1:0));
   for(const isl of worldIslands){
     const isCurrent=isl.id===curIsland;
     const unlocked=islandUnlocked(isl);
@@ -2412,8 +3450,10 @@ window.adminGiveWeapon=function(id){if(!me.bossWeapons.includes(id))me.bossWeapo
 window.adminSetBag=function(n){me.bagMax=n;saveGame();renderAdmin()};
 window.adminClearBag=function(){me.bag=[];me.holdFish=null;me.holdTimer=0;saveGame();renderAdmin()};
 window.adminAllIslands=function(){
-  for(const isl of ISLANDS){if(!me.unlockedIslands.includes(isl.id))me.unlockedIslands.push(isl.id)}
-  me.hasBoat=true;saveGame();renderAdmin();
+  me.hasBoat=true;
+  // Defeat all bosses to unlock all worlds/islands
+  for(const w of WORLDS){if(!me.bossesDefeated.includes(w.id))me.bossesDefeated.push(w.id)}
+  saveGame();renderAdmin();
 };
 window.adminDefeatBosses=function(){
   for(const w of WORLDS){if(!me.bossesDefeated.includes(w.id))me.bossesDefeated.push(w.id)}
@@ -2462,17 +3502,34 @@ const _ROD_COLORS={
   rod_vw1:['#4a2a6a','#3a1a5a'],rod_vw2:['#6a3a8a','#4a1a6a'],
   rod_cr1:['#5a5aaa','#3a3a8a'],rod_cr2:['#7a5acc','#5a3aaa'],
   rod_ft1:['#c0a040','#a08020'],rod_ft2:['#ffd700','#ccaa00'],
+  rod_rv1:['#6a8a4a','#4a6a2a'],rod_rv2:['#5a7a3a','#3a5a1a'],
+  rod_cb1:['#e07070','#c05050'],rod_cb2:['#e0c0a0','#c0a080'],rod_cb3:['#50a0c0','#3080a0'],
+  rod_fl1:['#a0d0f0','#80b0d0'],rod_fl2:['#c0e8ff','#a0d0f0'],
+  rod_ef1:['#c06030','#a04010'],rod_ef2:['#8a7060','#6a5040'],rod_ef3:['#e05020','#c03010'],
+  rod_sr1:['#7a7a6a','#5a5a4a'],rod_sr2:['#9a8a5a','#7a6a3a'],rod_sr3:['#b0a060','#908040'],
+  rod_at1:['#2a4a6a','#1a3a5a'],rod_at2:['#30c0a0','#1aa080'],rod_at3:['#1a3a4a','#0a2a3a'],
+  rod_wt1:['#c0c0e0','#a0a0c0'],rod_wt2:['#b0b0d0','#9090b0'],rod_wt3:['#e0d0f0','#c0b0d0'],
+  rod_tf1:['#5a5a8a','#3a3a6a'],rod_tf2:['#7070b0','#5050a0'],rod_tf3:['#9090dd','#7070bb'],
+  rod_dn1:['#5a3a9a','#3a1a7a'],rod_dn2:['#7a4aba','#5a2a9a'],
+  rod_ch1:['#8a2a4a','#6a1a3a'],rod_ch2:['#aa3a5a','#8a1a3a'],
 };
 const _ROD_COLORS_DEFAULT=['#6a4a2a','#4a3a1a'];
+const _PET_COLS={common:'#6a9a6a',uncommon:'#3a8aaa',rare:'#4a5ac8',epic:'#8a4ab8',legendary:'#c8a030',boss:'#ff3030'};
+const _FISH_COLS_DEFAULT={common:['#6a9a6a','#8ac88a'],uncommon:['#3a8aaa','#5ac8e0'],rare:['#4a5ac8','#7a8af8'],epic:['#8a4ab8','#ba7ae8'],legendary:['#c8a030','#f8d060']};
 
 function drawPlayerSprite(cx,p,px,py,isMe){
   const col=p.color||COLORS[p.colorIdx||0];
-  // Shadow (oval)
-  cx.fillStyle='rgba(0,0,0,0.2)';
-  cx.beginPath();cx.ellipse(px,py+6,5,2.5,0,0,Math.PI*2);cx.fill();
+  // Check if player has a mount (rod val >= 6)
+  const _mountRod=p.equippedRod?UPGRADES_BY_ID[p.equippedRod]:null;
+  const _hasMount=_mountRod&&_mountRod.type==='rod'&&_mountRod.val>=6;
+  // Shadow (oval) - hide if mounted
+  if(!_hasMount){
+    cx.fillStyle='rgba(0,0,0,0.2)';
+    cx.beginPath();cx.ellipse(px,py+6,5,2.5,0,0,Math.PI*2);cx.fill();
+  }
   // Feet/shoes
   cx.fillStyle='#4a3020';
-  const walk=(p.frame||0)%4;
+  const walk=_hasMount?0:(p.frame||0)%4;
   if(walk===0||walk===2){cx.fillRect(px-2,py+4,2,3);cx.fillRect(px+1,py+4,2,3)}
   else if(walk===1){cx.fillRect(px-3,py+3,2,3);cx.fillRect(px+2,py+5,2,3)}
   else{cx.fillRect(px-2,py+5,2,3);cx.fillRect(px+1,py+3,2,3)}
@@ -2739,7 +3796,29 @@ function drawPlayerSprite(cx,p,px,py,isMe){
     cx.beginPath();cx.ellipse(fishX,fy+8*sc,5*sc,2,0,0,Math.PI*2);cx.fill();
 
     // Draw unique sprite per fish type
-    const n=f.name;
+    drawFishSprite(cx,f.name,f.rarity,fishX,fy,sc);
+
+    // Sparkle for rare+
+    if(f.rarity==='rare'||f.rarity==='epic'||f.rarity==='legendary'){
+      cx.fillStyle=f.rarity==='legendary'?'#ffd700':'#fff';
+      for(let s=0;s<3;s++){
+        const sa=time*4+s*2.1;
+        const sx2=fishX+Math.cos(sa)*6*sc;
+        const sy2=fy+Math.sin(sa)*4*sc;
+        cx.fillRect(Math.floor(sx2),Math.floor(sy2),1,1);
+      }
+    }
+
+    cx.globalAlpha=1;
+  }
+}
+
+let textOverlays=[];
+let toastOverlay=null;
+let sailingText=null;
+let reelLabel=null;
+
+function drawFishSprite(cx,n,rarity,fishX,fy,sc){
     if(n==='Seaweed'){
       cx.fillStyle='#2a6a3a';
       for(let i=0;i<4;i++){
@@ -3833,6 +4912,521 @@ function drawPlayerSprite(cx,p,px,py,isMe){
       cx.beginPath();cx.arc(fishX,fy,5*sc,0,Math.PI*2);cx.fill();
       cx.fillStyle='#c080f0';cx.fillRect(fishX-2*sc,fy-1*sc,2*sc,1*sc);
       cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-1*sc,0.5*sc,0.5*sc);
+    // ---- NEW ISLAND FISH SPRITES ----
+    // Riverside fish
+    } else if(n==='River Trout'){
+      cx.fillStyle='#6a8a5a';
+      cx.beginPath();cx.ellipse(fishX,fy,4*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#8aaa7a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,3*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#6a8a5a';
+      cx.beginPath();cx.moveTo(fishX+4*sc,fy);cx.lineTo(fishX+6*sc,fy-1.5*sc);cx.lineTo(fishX+6*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      // Spots
+      cx.fillStyle='#5a7040';
+      for(let i=0;i<3;i++)cx.fillRect(fishX-2*sc+i*2*sc,fy-0.8*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-3*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-2.7*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    } else if(n==='Crayfish'){
+      cx.fillStyle='#b04030';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#c05040';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      // Claws
+      cx.fillStyle='#d06050';
+      cx.fillRect(fishX-4*sc,fy-1.5*sc,1.5*sc,1*sc);cx.fillRect(fishX-4*sc,fy+0.5*sc,1.5*sc,1*sc);
+      // Tail fan
+      cx.fillStyle='#b04030';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+5*sc,fy-1.5*sc);cx.lineTo(fishX+5*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.3*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.1*sc,0.4*sc,0.4*sc);
+    } else if(n==='Sunfish'){
+      cx.fillStyle='#d0a030';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#e8c050';
+      cx.beginPath();cx.ellipse(fishX,fy,2*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Tall dorsal fin
+      cx.fillStyle='#c09020';
+      cx.beginPath();cx.moveTo(fishX-1*sc,fy-2.5*sc);cx.lineTo(fishX+2*sc,fy-3.5*sc);cx.lineTo(fishX+2*sc,fy-2*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.2*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    } else if(n==='Dragonfly Larva'){
+      cx.fillStyle='#5a7a3a';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      // Segmented body
+      cx.fillStyle='#4a6a2a';
+      for(let i=0;i<3;i++)cx.fillRect(fishX-1*sc+i*1.2*sc,fy-0.8*sc,0.3*sc,1.6*sc);
+      // Legs
+      cx.fillStyle='#3a5a1a';
+      cx.fillRect(fishX-1.5*sc,fy+1*sc,0.5*sc,1*sc);cx.fillRect(fishX+1*sc,fy+1*sc,0.5*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.1*sc,0.4*sc,0.4*sc);
+    // Coral Bay fish
+    } else if(n==='Coral Goby'){
+      cx.fillStyle='#e06840';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#f08860';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,1.8*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#e06840';
+      cx.beginPath();cx.moveTo(fishX+2.5*sc,fy);cx.lineTo(fishX+4*sc,fy-1*sc);cx.lineTo(fishX+4*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.3*sc,fy-0.3*sc,0.5*sc,0.5*sc);
+    } else if(n==='Butterfly Fish'){
+      cx.fillStyle='#f0d040';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      // Black stripe
+      cx.fillStyle='#1a1a1a';
+      cx.fillRect(fishX-0.5*sc,fy-2.5*sc,1*sc,5*sc);
+      cx.fillStyle='#f8e868';
+      cx.beginPath();cx.ellipse(fishX,fy,2*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Eye spot
+      cx.fillStyle='#1a1a1a';cx.beginPath();cx.arc(fishX+1.5*sc,fy-1*sc,0.8*sc,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.4*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Pufferfish'){
+      const puff=1+0.15*Math.sin(time*3);
+      cx.fillStyle='#d0a040';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc*puff,3*sc*puff,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#e8c868';
+      cx.beginPath();cx.ellipse(fishX,fy,2*sc*puff,2*sc*puff,0,0,Math.PI*2);cx.fill();
+      // Spines
+      cx.fillStyle='#b08020';
+      for(let i=0;i<8;i++){const a=i*Math.PI/4;cx.fillRect(fishX+Math.cos(a)*3*sc*puff,fy+Math.sin(a)*3*sc*puff,1*sc,1*sc)}
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-1*sc,1.2*sc,1.2*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.2*sc,fy-0.7*sc,0.8*sc,0.8*sc);
+    } else if(n==='Blue Tang'){
+      cx.fillStyle='#2060d0';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#3080f0';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Yellow tail
+      cx.fillStyle='#f0d030';
+      cx.beginPath();cx.moveTo(fishX+3.5*sc,fy);cx.lineTo(fishX+5.5*sc,fy-1.5*sc);cx.lineTo(fishX+5.5*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      // Black marking
+      cx.fillStyle='#0a0a2a';
+      cx.beginPath();cx.ellipse(fishX+1*sc,fy,1*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.5*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-2.2*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    // Frozen Lake fish
+    } else if(n==='Frost Minnow'){
+      cx.fillStyle='#90c0e0';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#b0d8f0';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,1.8*sc,0.7*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#90c0e0';
+      cx.beginPath();cx.moveTo(fishX+2.5*sc,fy);cx.lineTo(fishX+3.5*sc,fy-0.8*sc);cx.lineTo(fishX+3.5*sc,fy+0.8*sc);cx.closePath();cx.fill();
+      // Ice sparkle
+      cx.fillStyle='#fff';cx.fillRect(fishX+0.5*sc,fy-0.5*sc,0.5*sc,0.5*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.3*sc,fy-0.1*sc,0.4*sc,0.4*sc);
+    } else if(n==='Glacial Pike'){
+      cx.fillStyle='#6090b0';
+      cx.beginPath();cx.ellipse(fishX,fy,5*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#80b0d0';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,4*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      // Sharp snout
+      cx.fillStyle='#6090b0';
+      cx.beginPath();cx.moveTo(fishX-5*sc,fy);cx.lineTo(fishX-7*sc,fy);cx.lineTo(fishX-5*sc,fy+0.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#6090b0';
+      cx.beginPath();cx.moveTo(fishX+5*sc,fy);cx.lineTo(fishX+7*sc,fy-1.5*sc);cx.lineTo(fishX+7*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-4*sc,fy-0.4*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-3.7*sc,fy-0.2*sc,0.5*sc,0.5*sc);
+    } else if(n==='Ice Crab'){
+      cx.fillStyle='#88b8d8';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#a0d0e8';
+      cx.beginPath();cx.ellipse(fishX,fy-0.3*sc,2*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      // Icy claws
+      cx.fillStyle='#c0e8ff';
+      cx.fillRect(fishX-4.5*sc,fy-1*sc,1.5*sc,1*sc);cx.fillRect(fishX+3*sc,fy-1*sc,1.5*sc,1*sc);
+      // Legs
+      cx.fillStyle='#88b8d8';
+      cx.fillRect(fishX-2*sc,fy+2*sc,0.5*sc,1*sc);cx.fillRect(fishX+1.5*sc,fy+2*sc,0.5*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-1*sc,fy-0.8*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-0.7*sc,fy-0.6*sc,0.4*sc,0.4*sc);
+    } else if(n==='Permafrost Eel'){
+      cx.fillStyle='#5080a0';
+      const segments=6;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.8*sc;
+        const sy=fy+Math.sin(time*3+i*0.8)*1.5*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.5*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      }
+      cx.fillStyle='#a0d0f0';
+      cx.fillRect(fishX-3*sc,fy-0.5*sc+Math.sin(time*3)*1.5*sc,1*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.5*sc,fy-0.3*sc+Math.sin(time*3)*1.5*sc,0.5*sc,0.5*sc);
+    // Ember Fields fish
+    } else if(n==='Cinder Fish'){
+      cx.fillStyle='#a04020';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,1.8*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#c06030';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      // Ember particles
+      cx.fillStyle='#f0a020';
+      for(let i=0;i<3;i++){cx.fillRect(fishX+Math.sin(time*4+i*2)*2*sc,fy-2*sc-i*0.8*sc,0.6*sc,0.6*sc)}
+      cx.fillStyle='#c06030';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+4.5*sc,fy-1*sc);cx.lineTo(fishX+4.5*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.4*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Ash Crawler'){
+      cx.fillStyle='#5a5050';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#7a7060';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      // Legs like a crawler
+      cx.fillStyle='#4a4040';
+      for(let i=0;i<4;i++)cx.fillRect(fishX-2*sc+i*1.5*sc,fy+1.5*sc,0.4*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.4*sc,0.6*sc,0.6*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Smoke Eel'){
+      cx.fillStyle='#4a4040';
+      const segments=5;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-2.5*sc+i*1.6*sc;
+        const sy=fy+Math.sin(time*2.5+i*0.7)*1.5*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.3*sc,0.9*sc,0,0,Math.PI*2);cx.fill();
+      }
+      // Smoke wisps
+      cx.fillStyle=`rgba(100,90,80,${0.3+0.2*Math.sin(time*2)})`;
+      cx.beginPath();cx.arc(fishX,fy-2*sc,2*sc,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-3*sc,fy-0.3*sc+Math.sin(time*2.5)*1.5*sc,0.5*sc,0.5*sc);
+    } else if(n==='Inferno Koi'){
+      cx.fillStyle='#d04010';
+      cx.beginPath();cx.ellipse(fishX,fy,4*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#f06020';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,3*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Fire pattern
+      cx.fillStyle='#f0a020';
+      cx.fillRect(fishX-2*sc,fy-1.5*sc,1*sc,1*sc);cx.fillRect(fishX+0.5*sc,fy-1.5*sc,1*sc,1*sc);
+      // Flame tail
+      cx.fillStyle='#f08020';
+      cx.beginPath();cx.moveTo(fishX+4*sc,fy);cx.lineTo(fishX+6*sc,fy-2*sc+Math.sin(time*5)*0.5*sc);cx.lineTo(fishX+6*sc,fy+2*sc+Math.sin(time*5+1)*0.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-3*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-2.7*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    // Sunken Ruins fish
+    } else if(n==='Ruin Goby'){
+      cx.fillStyle='#6a7a6a';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#8a9a8a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,1.8*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      // Stone-like markings
+      cx.fillStyle='#5a6a5a';
+      cx.fillRect(fishX-1*sc,fy-0.8*sc,0.5*sc,0.5*sc);cx.fillRect(fishX+0.5*sc,fy-0.5*sc,0.5*sc,0.5*sc);
+      cx.fillStyle='#6a7a6a';
+      cx.beginPath();cx.moveTo(fishX+2.5*sc,fy);cx.lineTo(fishX+3.5*sc,fy-0.8*sc);cx.lineTo(fishX+3.5*sc,fy+0.8*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.4*sc,0.6*sc,0.6*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.3*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Temple Koi'){
+      cx.fillStyle='#b09050';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#d0b070';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      // Ancient markings
+      cx.fillStyle='#8a7040';
+      cx.fillRect(fishX-1*sc,fy-1.5*sc,2*sc,0.5*sc);
+      cx.fillStyle='#b09050';
+      cx.beginPath();cx.moveTo(fishX+3.5*sc,fy);cx.lineTo(fishX+5*sc,fy-1.5*sc);cx.lineTo(fishX+5*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.5*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-2.2*sc,fy-0.3*sc,0.5*sc,0.5*sc);
+    } else if(n==='Mosaic Fish'){
+      cx.fillStyle='#5a8a7a';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      // Mosaic tiles
+      const cols=['#5a8a7a','#7aaa9a','#4a7a6a','#8aba9a'];
+      for(let i=0;i<4;i++)for(let j=0;j<2;j++){
+        cx.fillStyle=cols[(i+j)%4];
+        cx.fillRect(fishX-2.5*sc+i*1.3*sc,fy-1.2*sc+j*1.3*sc,1.2*sc,1.2*sc);
+      }
+      cx.fillStyle='#5a8a7a';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+4.5*sc,fy-1*sc);cx.lineTo(fishX+4.5*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.7*sc,fy-0.3*sc,0.5*sc,0.5*sc);
+    } else if(n==='Ancient Guardian'){
+      cx.fillStyle='#7a8a5a';
+      cx.beginPath();cx.ellipse(fishX,fy,4.5*sc,3*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#9aaa7a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,3.5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      // Stone armor plates
+      cx.fillStyle='#6a7a4a';
+      cx.fillRect(fishX-3*sc,fy-2.5*sc,2*sc,1.5*sc);cx.fillRect(fishX+1*sc,fy-2.5*sc,2*sc,1.5*sc);
+      // Glowing rune
+      cx.fillStyle='#f0d040';cx.fillRect(fishX-0.5*sc,fy-1*sc,1*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.5*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-3.2*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    // Abyssal Trench fish
+    } else if(n==='Lantern Fish'){
+      cx.fillStyle='#1a2a3a';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,1.8*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#2a3a4a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      // Bioluminescent lure
+      const glow=0.5+0.3*Math.sin(time*4);
+      cx.fillStyle=`rgba(100,220,255,${glow})`;
+      cx.beginPath();cx.arc(fishX-4*sc,fy-2*sc,1.2*sc,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#1a2a3a';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+4.5*sc,fy-1*sc);cx.lineTo(fishX+4.5*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle=`rgba(100,220,255,${glow})`;cx.fillRect(fishX-2*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+    } else if(n==='Depth Worm'){
+      cx.fillStyle='#3a2a3a';
+      const segments=7;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.2*sc;
+        const sy=fy+Math.sin(time*2+i*0.6)*2*sc;
+        const r=1.2*sc-i*0.1*sc;
+        cx.beginPath();cx.ellipse(sx,sy,r,r*0.8,0,0,Math.PI*2);cx.fill();
+      }
+      cx.fillStyle='#5a3a5a';cx.fillRect(fishX-3.5*sc,fy-0.5*sc+Math.sin(time*2)*2*sc,1*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.8*sc,fy-0.3*sc+Math.sin(time*2)*2*sc,0.5*sc,0.5*sc);
+    } else if(n==='Biolume Jelly'){
+      const pulse=0.4+0.3*Math.sin(time*3);
+      cx.fillStyle=`rgba(60,180,220,${pulse})`;
+      cx.beginPath();cx.ellipse(fishX,fy-1*sc,3*sc,2.5*sc,0,0,Math.PI);cx.fill();
+      cx.fillStyle=`rgba(80,200,240,${pulse*0.7})`;
+      cx.beginPath();cx.ellipse(fishX,fy-1*sc,2*sc,1.5*sc,0,0,Math.PI);cx.fill();
+      // Tentacles
+      cx.fillStyle=`rgba(60,180,220,${pulse*0.5})`;
+      for(let i=0;i<4;i++){
+        const tx=fishX-2*sc+i*1.5*sc;
+        cx.fillRect(tx,fy+1*sc,0.4*sc,2*sc+Math.sin(time*2+i)*0.5*sc);
+      }
+    } else if(n==='Trench Leviathan'){
+      cx.fillStyle='#1a1a2a';
+      cx.beginPath();cx.ellipse(fishX,fy,5.5*sc,3*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#2a2a3a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,4*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      // Bioluminescent spots
+      cx.fillStyle=`rgba(60,220,180,${0.5+0.3*Math.sin(time*3)})`;
+      for(let i=0;i<5;i++)cx.fillRect(fishX-3*sc+i*1.5*sc,fy-1.5*sc+Math.sin(i)*0.5*sc,0.7*sc,0.7*sc);
+      // Huge jaw
+      cx.fillStyle='#1a1a2a';
+      cx.beginPath();cx.moveTo(fishX-5.5*sc,fy);cx.lineTo(fishX-7*sc,fy-1*sc);cx.lineTo(fishX-7*sc,fy+1.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#4a4a5a';cx.fillRect(fishX-6.5*sc,fy-0.5*sc,1*sc,0.5*sc);cx.fillRect(fishX-6.5*sc,fy+0.3*sc,1*sc,0.5*sc);
+      cx.fillStyle='#c03030';cx.fillRect(fishX-4*sc,fy-0.5*sc,1*sc,1*sc);
+    // Wind Temple fish
+    } else if(n==='Zephyr Fish'){
+      cx.fillStyle='#b0c0e0';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,1.8*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#d0e0f8';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      // Wispy fins
+      cx.fillStyle=`rgba(200,220,255,0.6)`;
+      cx.beginPath();cx.moveTo(fishX,fy-1.8*sc);cx.lineTo(fishX+2*sc,fy-3*sc+Math.sin(time*4)*0.5*sc);cx.lineTo(fishX+1*sc,fy-1.5*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#b0c0e0';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+5*sc,fy-1*sc);cx.lineTo(fishX+5*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-2*sc,fy-0.4*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#4040a0';cx.fillRect(fishX-1.8*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Breeze Eel'){
+      cx.fillStyle='#a0b8d8';
+      const segments=6;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.5*sc;
+        const sy=fy+Math.sin(time*3+i*0.9)*1.2*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.3*sc,0.8*sc,0,0,Math.PI*2);cx.fill();
+      }
+      // Wind trail
+      cx.fillStyle=`rgba(200,220,255,${0.2+0.15*Math.sin(time*3)})`;
+      cx.beginPath();cx.ellipse(fishX+4*sc,fy,2*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.5*sc,fy-0.3*sc+Math.sin(time*3)*1.2*sc,0.5*sc,0.5*sc);
+    } else if(n==='Gale Shark'){
+      cx.fillStyle='#7090b0';
+      cx.beginPath();cx.ellipse(fishX,fy,5*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#90b0d0';
+      cx.beginPath();cx.ellipse(fishX,fy+0.8*sc,4*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Dorsal fin
+      cx.fillStyle='#6080a0';
+      cx.beginPath();cx.moveTo(fishX,fy-2.5*sc);cx.lineTo(fishX+2*sc,fy-4*sc);cx.lineTo(fishX+3*sc,fy-2.5*sc);cx.closePath();cx.fill();
+      // Tail
+      cx.beginPath();cx.moveTo(fishX+5*sc,fy);cx.lineTo(fishX+7*sc,fy-2*sc);cx.lineTo(fishX+7*sc,fy+2*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.5*sc,fy-0.5*sc,1*sc,1*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-3.2*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+    } else if(n==='Wind Spirit'){
+      cx.fillStyle=`rgba(180,210,255,${0.6+0.2*Math.sin(time*2)})`;
+      cx.beginPath();cx.ellipse(fishX,fy,4*sc,3*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle=`rgba(220,240,255,${0.5+0.2*Math.sin(time*2.5)})`;
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      // Ethereal wisps
+      cx.fillStyle=`rgba(255,255,255,${0.3+0.2*Math.sin(time*4)})`;
+      for(let i=0;i<5;i++){
+        const a=time*2+i*Math.PI*2/5;
+        cx.fillRect(fishX+Math.cos(a)*4*sc,fy+Math.sin(a)*3*sc,1*sc,1*sc);
+      }
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.8*sc,1.2*sc,1.2*sc);
+      cx.fillStyle='#8080ff';cx.fillRect(fishX-1.2*sc,fy-0.5*sc,0.7*sc,0.7*sc);
+    // Thunder Fortress fish
+    } else if(n==='Volt Minnow'){
+      cx.fillStyle='#3040a0';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#5060c0';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,1.8*sc,0.7*sc,0,0,Math.PI*2);cx.fill();
+      // Electric spark
+      cx.fillStyle='#f0f060';
+      if(Math.sin(time*8)>0)cx.fillRect(fishX+0.5*sc,fy-1.5*sc,0.5*sc,1*sc);
+      cx.fillStyle='#3040a0';
+      cx.beginPath();cx.moveTo(fishX+2.5*sc,fy);cx.lineTo(fishX+3.5*sc,fy-0.8*sc);cx.lineTo(fishX+3.5*sc,fy+0.8*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.3*sc,0.6*sc,0.6*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.3*sc,fy-0.1*sc,0.4*sc,0.4*sc);
+    } else if(n==='Spark Eel'){
+      cx.fillStyle='#3a3a7a';
+      const segments=6;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.5*sc;
+        const sy=fy+Math.sin(time*3+i*0.7)*1.5*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.3*sc,0.9*sc,0,0,Math.PI*2);cx.fill();
+      }
+      // Lightning crackle
+      cx.fillStyle='#f0f060';
+      if(Math.sin(time*6)>0.3){
+        cx.fillRect(fishX-1*sc,fy-2*sc,0.4*sc,1*sc);
+        cx.fillRect(fishX+1*sc,fy+1*sc,0.4*sc,1*sc);
+      }
+      cx.fillStyle='#fff';cx.fillRect(fishX-3.5*sc,fy-0.3*sc+Math.sin(time*3)*1.5*sc,0.5*sc,0.5*sc);
+    } else if(n==='Thunder Crab'){
+      cx.fillStyle='#3a3a6a';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,2.2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#4a4a8a';
+      cx.beginPath();cx.ellipse(fishX,fy-0.3*sc,2.5*sc,1.5*sc,0,0,Math.PI*2);cx.fill();
+      // Electric claws
+      cx.fillStyle='#5a5aaa';
+      cx.fillRect(fishX-5*sc,fy-1.5*sc,2*sc,1.2*sc);cx.fillRect(fishX+3*sc,fy-1.5*sc,2*sc,1.2*sc);
+      // Lightning bolt on shell
+      cx.fillStyle='#f0f060';
+      cx.fillRect(fishX-0.3*sc,fy-1.5*sc,0.6*sc,1*sc);cx.fillRect(fishX-0.6*sc,fy-0.5*sc,0.6*sc,0.5*sc);cx.fillRect(fishX-0.3*sc,fy,0.6*sc,1*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-1.5*sc,fy-0.5*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.2*sc,fy-0.3*sc,0.4*sc,0.4*sc);
+    } else if(n==='Storm Titan'){
+      cx.fillStyle='#2a2a5a';
+      cx.beginPath();cx.ellipse(fishX,fy,5.5*sc,3.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#3a3a7a';
+      cx.beginPath();cx.ellipse(fishX,fy+0.8*sc,4.5*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      // Electric aura
+      cx.fillStyle=`rgba(200,200,80,${0.2+0.15*Math.sin(time*5)})`;
+      cx.beginPath();cx.arc(fishX,fy,6*sc,0,Math.PI*2);cx.fill();
+      // Lightning bolts around
+      cx.fillStyle='#f0f060';
+      for(let i=0;i<4;i++){
+        if(Math.sin(time*6+i*1.5)>0.5){
+          const a=i*Math.PI/2+time;
+          cx.fillRect(fishX+Math.cos(a)*5*sc,fy+Math.sin(a)*3.5*sc,1*sc,0.5*sc);
+        }
+      }
+      cx.fillStyle='#c03030';cx.fillRect(fishX-3*sc,fy-0.5*sc,1.2*sc,1.2*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.5*sc,fy-0.3*sc,0.4*sc,0.4*sc);
+    // Dark Nebula fish
+    } else if(n==='Nebula Minnow'){
+      cx.fillStyle='#2a1050';
+      cx.beginPath();cx.ellipse(fishX,fy,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#3a2060';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,1.8*sc,0.7*sc,0,0,Math.PI*2);cx.fill();
+      // Star sparkles
+      cx.fillStyle='#fff';
+      cx.fillRect(fishX-0.5*sc,fy-0.8*sc,0.4*sc,0.4*sc);cx.fillRect(fishX+1*sc,fy-0.3*sc,0.3*sc,0.3*sc);
+      cx.fillStyle='#2a1050';
+      cx.beginPath();cx.moveTo(fishX+2.5*sc,fy);cx.lineTo(fishX+3.5*sc,fy-0.8*sc);cx.lineTo(fishX+3.5*sc,fy+0.8*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#c080ff';cx.fillRect(fishX-1.5*sc,fy-0.3*sc,0.5*sc,0.5*sc);
+    } else if(n==='Dark Matter Fish'){
+      cx.fillStyle='#1a0830';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#2a1040';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      // Dark energy swirl
+      cx.fillStyle=`rgba(80,40,150,${0.3+0.2*Math.sin(time*3)})`;
+      cx.beginPath();cx.arc(fishX,fy,4*sc,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#1a0830';
+      cx.beginPath();cx.moveTo(fishX+3.5*sc,fy);cx.lineTo(fishX+5*sc,fy-1.2*sc);cx.lineTo(fishX+5*sc,fy+1.2*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#8040c0';cx.fillRect(fishX-2.5*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.3*sc,fy-0.3*sc,0.4*sc,0.4*sc);
+    } else if(n==='Pulsar Eel'){
+      cx.fillStyle='#20104a';
+      const segments=6;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.5*sc;
+        const sy=fy+Math.sin(time*2.5+i*0.8)*1.5*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.3*sc,0.9*sc,0,0,Math.PI*2);cx.fill();
+      }
+      // Pulsing light
+      const pulse=0.3+0.4*Math.abs(Math.sin(time*4));
+      cx.fillStyle=`rgba(180,120,255,${pulse})`;
+      cx.beginPath();cx.arc(fishX,fy+Math.sin(time*2.5+2.4)*1.5*sc,1.5*sc,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#c080ff';cx.fillRect(fishX-3.5*sc,fy-0.3*sc+Math.sin(time*2.5)*1.5*sc,0.5*sc,0.5*sc);
+    } else if(n==='Supernova Ray'){
+      cx.fillStyle='#3a1060';
+      cx.beginPath();cx.ellipse(fishX,fy,5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#4a2080';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      // Wide fins
+      cx.fillStyle='#3a1060';
+      cx.beginPath();cx.moveTo(fishX-2*sc,fy);cx.lineTo(fishX,fy-3.5*sc);cx.lineTo(fishX+2*sc,fy);cx.fill();
+      cx.beginPath();cx.moveTo(fishX-2*sc,fy);cx.lineTo(fishX,fy+3.5*sc);cx.lineTo(fishX+2*sc,fy);cx.fill();
+      // Supernova glow
+      cx.fillStyle=`rgba(255,180,60,${0.3+0.2*Math.sin(time*3)})`;
+      cx.beginPath();cx.arc(fishX,fy,3*sc,0,Math.PI*2);cx.fill();
+      // Star particles
+      cx.fillStyle='#fff';
+      for(let i=0;i<4;i++){const a=time+i*Math.PI/2;cx.fillRect(fishX+Math.cos(a)*4*sc,fy+Math.sin(a)*2*sc,0.5*sc,0.5*sc)}
+      cx.fillStyle='#f0a040';cx.fillRect(fishX-3*sc,fy-0.4*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.7*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    // Chaos Rift fish
+    } else if(n==='Chaos Spawn'){
+      cx.fillStyle='#5a1020';
+      cx.beginPath();cx.ellipse(fishX,fy,3*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#7a2030';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2*sc,1*sc,0,0,Math.PI*2);cx.fill();
+      // Chaotic spikes
+      cx.fillStyle='#9a3040';
+      for(let i=0;i<5;i++){
+        const a=i*Math.PI*2/5+Math.sin(time*3)*0.3;
+        cx.fillRect(fishX+Math.cos(a)*3*sc,fy+Math.sin(a)*2*sc,0.8*sc,0.8*sc);
+      }
+      cx.fillStyle='#5a1020';
+      cx.beginPath();cx.moveTo(fishX+3*sc,fy);cx.lineTo(fishX+4.5*sc,fy-1*sc);cx.lineTo(fishX+4.5*sc,fy+1*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#ff4040';cx.fillRect(fishX-2*sc,fy-0.4*sc,0.7*sc,0.7*sc);
+      cx.fillStyle='#111';cx.fillRect(fishX-1.8*sc,fy-0.2*sc,0.4*sc,0.4*sc);
+    } else if(n==='Rift Walker'){
+      cx.fillStyle='#3a0818';
+      cx.beginPath();cx.ellipse(fishX,fy,3.5*sc,2*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#5a1028';
+      cx.beginPath();cx.ellipse(fishX,fy+0.3*sc,2.5*sc,1.2*sc,0,0,Math.PI*2);cx.fill();
+      // Reality tear effect
+      cx.fillStyle=`rgba(255,40,80,${0.3+0.2*Math.sin(time*4)})`;
+      cx.fillRect(fishX-0.5*sc,fy-3*sc,1*sc,6*sc);
+      cx.fillStyle='#3a0818';
+      cx.beginPath();cx.moveTo(fishX+3.5*sc,fy);cx.lineTo(fishX+5*sc,fy-1.2*sc);cx.lineTo(fishX+5*sc,fy+1.2*sc);cx.closePath();cx.fill();
+      cx.fillStyle='#ff4060';cx.fillRect(fishX-2.5*sc,fy-0.5*sc,0.8*sc,0.8*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.3*sc,fy-0.3*sc,0.4*sc,0.4*sc);
+    } else if(n==='Entropy Eel'){
+      cx.fillStyle='#4a0820';
+      const segments=6;
+      for(let i=0;i<segments;i++){
+        const sx=fishX-3*sc+i*1.5*sc;
+        const sy=fy+Math.sin(time*2+i*0.7)*1.5*sc;
+        cx.beginPath();cx.ellipse(sx,sy,1.3*sc,0.9*sc,0,0,Math.PI*2);cx.fill();
+      }
+      // Entropy dissolution particles
+      cx.fillStyle=`rgba(200,40,60,${0.2+0.2*Math.sin(time*3)})`;
+      for(let i=0;i<4;i++){
+        cx.fillRect(fishX-2*sc+i*1.5*sc,fy-2*sc+Math.sin(time*2+i)*0.5*sc,0.5*sc,0.5*sc);
+      }
+      cx.fillStyle='#ff4040';cx.fillRect(fishX-3.5*sc,fy-0.3*sc+Math.sin(time*2)*1.5*sc,0.5*sc,0.5*sc);
+    } else if(n==='Reality Breaker'){
+      cx.fillStyle='#3a0810';
+      cx.beginPath();cx.ellipse(fishX,fy,5*sc,3.5*sc,0,0,Math.PI*2);cx.fill();
+      cx.fillStyle='#5a1020';
+      cx.beginPath();cx.ellipse(fishX,fy+0.5*sc,4*sc,2.5*sc,0,0,Math.PI*2);cx.fill();
+      // Reality fracture lines
+      cx.strokeStyle=`rgba(255,60,80,${0.4+0.3*Math.sin(time*3)})`;
+      cx.lineWidth=0.5*sc;
+      cx.beginPath();cx.moveTo(fishX-5*sc,fy-3*sc);cx.lineTo(fishX+5*sc,fy+3*sc);cx.stroke();
+      cx.beginPath();cx.moveTo(fishX+5*sc,fy-3*sc);cx.lineTo(fishX-5*sc,fy+3*sc);cx.stroke();
+      // Void energy
+      cx.fillStyle=`rgba(255,40,60,${0.2+0.15*Math.sin(time*4)})`;
+      cx.beginPath();cx.arc(fishX,fy,6*sc,0,Math.PI*2);cx.fill();
+      // Chaos orbs
+      cx.fillStyle='#ff3040';
+      for(let i=0;i<6;i++){
+        const a=time*1.5+i*Math.PI*2/6;
+        cx.fillRect(fishX+Math.cos(a)*5*sc,fy+Math.sin(a)*3.5*sc,1*sc,1*sc);
+      }
+      cx.fillStyle='#ff6060';cx.fillRect(fishX-3*sc,fy-0.5*sc,1.2*sc,1.2*sc);
+      cx.fillStyle='#fff';cx.fillRect(fishX-2.6*sc,fy-0.2*sc,0.5*sc,0.5*sc);
     } else if(n==='The Swamp King'){
       // Huge green monster fish with crown
       cx.fillStyle='#2a5a1a';
@@ -3946,8 +5540,7 @@ function drawPlayerSprite(cx,p,px,py,isMe){
       cx.fillRect(fishX-4*sc,fy-5.5*sc,1*sc,2*sc);cx.fillRect(fishX-1*sc,fy-6*sc,1*sc,2.5*sc);cx.fillRect(fishX+2*sc,fy-5.5*sc,1*sc,2*sc);
     } else {
       // Default fish shape for all others
-      const fishCols={common:['#6a9a6a','#8ac88a'],uncommon:['#3a8aaa','#5ac8e0'],rare:['#4a5ac8','#7a8af8'],epic:['#8a4ab8','#ba7ae8'],legendary:['#c8a030','#f8d060']};
-      const fc=fishCols[f.rarity]||fishCols.common;
+      const fc=_FISH_COLS_DEFAULT[rarity]||_FISH_COLS_DEFAULT.common;
       const bw=5*sc, bh=2.5*sc;
       // Body
       cx.fillStyle=fc[0];
@@ -3964,26 +5557,7 @@ function drawPlayerSprite(cx,p,px,py,isMe){
       cx.fillStyle='#fff';cx.fillRect(fishX-bw*0.5,fy-bh*0.3,Math.max(1,1.5*sc),Math.max(1,1.5*sc));
       cx.fillStyle='#111';cx.fillRect(fishX-bw*0.5,fy-bh*0.2,Math.max(1,1*sc),Math.max(1,1*sc));
     }
-
-    // Sparkle for rare+
-    if(f.rarity==='rare'||f.rarity==='epic'||f.rarity==='legendary'){
-      cx.fillStyle=f.rarity==='legendary'?'#ffd700':'#fff';
-      for(let s=0;s<3;s++){
-        const sa=time*4+s*2.1;
-        const sx2=fishX+Math.cos(sa)*6*sc;
-        const sy2=fy+Math.sin(sa)*4*sc;
-        cx.fillRect(Math.floor(sx2),Math.floor(sy2),1,1);
-      }
-    }
-
-    cx.globalAlpha=1;
-  }
 }
-
-let textOverlays=[];
-let toastOverlay=null;
-let sailingText=null;
-let reelLabel=null;
 
 function render(){
   textOverlays=[];toastOverlay=null;sailingText=null;reelLabel=null;
@@ -4039,6 +5613,19 @@ function render(){
       bx.fillStyle=isl.ocean||'#1a4080';bx.fillRect(px,py,T+1,T+1); // water underneath
       bx.fillStyle='#8a6a3a';bx.fillRect(px,py+2,T,T-4); // planks
       bx.fillStyle='#7a5a2a';bx.fillRect(px,py+5,T,1);bx.fillRect(px,py+10,T,1);
+    }
+    else if(t===7){
+      // Secret cave entrance
+      const gc2=isl.grass[(tx+ty)%isl.grass.length];
+      bx.fillStyle=gc2;bx.fillRect(px,py,T+1,T+1);
+      bx.fillStyle='#1a1a2a';bx.beginPath();bx.ellipse(px+T/2,py+T/2,5,6,0,0,Math.PI*2);bx.fill();
+      bx.fillStyle='#2a2a3a';bx.fillRect(px+3,py+2,T-6,3);
+      bx.fillStyle='#3a3a4a';bx.fillRect(px+2,py+1,T-4,2);
+      // Sparkle hint
+      if(Math.sin(time*3+px*0.1+py*0.1)>0.8){
+        bx.fillStyle='rgba(255,220,100,0.4)';
+        bx.fillRect(px+T/2-1,py+T/2-3,2,1);
+      }
     }
     else if(t===6){
       // Ocean - use pre-cached oRgb
@@ -4352,7 +5939,944 @@ function render(){
     }
   }
 
-  // All players sorted by Y
+  // ========== ROD MOUNTS (drawn BEFORE player so player is in front) ==========
+  const eqRodId=me.equippedRod||'rod_m1';
+  const mePx=Math.floor(me.x-camX),mePy=Math.floor(me.y-camY);
+  const mtY=mePy+5; // mount Y (feet level)
+  const _mRod=UPGRADES_BY_ID[eqRodId];
+  const _hasMount2=_mRod&&_mRod.type==='rod'&&_mRod.val>=6;
+
+  // Only draw mounts for strong rods (val >= 6)
+  if(_hasMount2){
+    // ---- Cloud Rod (rod_sk2) - Big solid white fluffy cloud ----
+    if(eqRodId==='rod_sk2'){
+      const bob=Math.sin(time*1.2)*1.5;
+      // Shadow underneath
+      bx.fillStyle='#b0c8d8';
+      bx.beginPath();bx.ellipse(mePx,mtY+5+bob,13,4,0,0,Math.PI*2);bx.fill();
+      // Main cloud body - bottom layer (darker grey-white)
+      bx.fillStyle='#c8d8e8';
+      bx.beginPath();bx.ellipse(mePx,mtY+3+bob,14,5,0,0,Math.PI*2);bx.fill();
+      // Left lobe
+      bx.fillStyle='#d4e2ee';
+      bx.beginPath();bx.ellipse(mePx-7,mtY+1+bob,7,5,0,0,Math.PI*2);bx.fill();
+      // Right lobe
+      bx.fillStyle='#d0dfe8';
+      bx.beginPath();bx.ellipse(mePx+7,mtY+1+bob,7,5,0,0,Math.PI*2);bx.fill();
+      // Center top billow
+      bx.fillStyle='#e4eef6';
+      bx.beginPath();bx.ellipse(mePx,mtY-1+bob,10,5,0,0,Math.PI*2);bx.fill();
+      // Small top puff
+      bx.fillStyle='#eef5fb';
+      bx.beginPath();bx.ellipse(mePx-3,mtY-3+bob,5,3,0,0,Math.PI*2);bx.fill();
+      bx.beginPath();bx.ellipse(mePx+4,mtY-2+bob,4,3,0,0,Math.PI*2);bx.fill();
+      // Highlight on top
+      bx.fillStyle='#f8fcff';
+      bx.beginPath();bx.ellipse(mePx-2,mtY-4+bob,4,2,0,0,Math.PI*2);bx.fill();
+      // Wispy edge details
+      bx.fillStyle='#dce8f0';
+      bx.beginPath();bx.ellipse(mePx-11,mtY+2+bob,3,2,0,0,Math.PI*2);bx.fill();
+      bx.beginPath();bx.ellipse(mePx+11,mtY+2+bob,3,2,0,0,Math.PI*2);bx.fill();
+    }
+
+    // ---- Celestial Rod (rod_sk3) - Solid golden cloud + angel wings + halo ----
+    else if(eqRodId==='rod_sk3'){
+      const bob=Math.sin(time*1.0)*1.2;
+      // SOLID golden cloud - shadow layer
+      bx.fillStyle='#c8a040';
+      bx.beginPath();bx.ellipse(mePx,mtY+5+bob,14,5,0,0,Math.PI*2);bx.fill();
+      // Main golden body
+      bx.fillStyle='#e8c060';
+      bx.beginPath();bx.ellipse(mePx,mtY+3+bob,14,5,0,0,Math.PI*2);bx.fill();
+      // Left golden lobe
+      bx.fillStyle='#f0d070';
+      bx.beginPath();bx.ellipse(mePx-7,mtY+1+bob,7,5,0,0,Math.PI*2);bx.fill();
+      // Right golden lobe
+      bx.fillStyle='#ecc858';
+      bx.beginPath();bx.ellipse(mePx+7,mtY+1+bob,7,5,0,0,Math.PI*2);bx.fill();
+      // Center top
+      bx.fillStyle='#ffe8a0';
+      bx.beginPath();bx.ellipse(mePx,mtY-1+bob,10,5,0,0,Math.PI*2);bx.fill();
+      // Golden highlight puffs
+      bx.fillStyle='#fff0c0';
+      bx.beginPath();bx.ellipse(mePx-3,mtY-3+bob,5,3,0,0,Math.PI*2);bx.fill();
+      bx.beginPath();bx.ellipse(mePx+4,mtY-2+bob,4,3,0,0,Math.PI*2);bx.fill();
+      // Bright top highlight
+      bx.fillStyle='#fff8d8';
+      bx.beginPath();bx.ellipse(mePx-1,mtY-4+bob,4,2,0,0,Math.PI*2);bx.fill();
+      // Angel wings - left wing
+      const wFlap=Math.sin(time*2.5)*2;
+      bx.fillStyle='#fff0c0';
+      bx.beginPath();bx.moveTo(mePx-5,mePy-1);bx.lineTo(mePx-16,mePy-12+wFlap);
+      bx.lineTo(mePx-18,mePy-6+wFlap);bx.lineTo(mePx-14,mePy-1);
+      bx.lineTo(mePx-15,mePy+4);bx.lineTo(mePx-5,mePy+2);bx.fill();
+      bx.fillStyle='#ffe8a0';
+      bx.beginPath();bx.moveTo(mePx-6,mePy);bx.lineTo(mePx-13,mePy-8+wFlap);
+      bx.lineTo(mePx-12,mePy);bx.fill();
+      // Angel wings - right wing
+      bx.fillStyle='#fff0c0';
+      bx.beginPath();bx.moveTo(mePx+5,mePy-1);bx.lineTo(mePx+16,mePy-12+wFlap);
+      bx.lineTo(mePx+18,mePy-6+wFlap);bx.lineTo(mePx+14,mePy-1);
+      bx.lineTo(mePx+15,mePy+4);bx.lineTo(mePx+5,mePy+2);bx.fill();
+      bx.fillStyle='#ffe8a0';
+      bx.beginPath();bx.moveTo(mePx+6,mePy);bx.lineTo(mePx+13,mePy-8+wFlap);
+      bx.lineTo(mePx+12,mePy);bx.fill();
+      // Wing feather lines
+      bx.strokeStyle='#ffd880';bx.lineWidth=1;
+      bx.beginPath();bx.moveTo(mePx-8,mePy);bx.lineTo(mePx-14,mePy-5+wFlap);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx+8,mePy);bx.lineTo(mePx+14,mePy-5+wFlap);bx.stroke();
+      // Halo - glowing ring
+      const haloPulse=0.8+Math.sin(time*3)*0.2;
+      bx.strokeStyle='#ffd700';bx.lineWidth=2;
+      bx.beginPath();bx.ellipse(mePx,mePy-16,7,2.5,0,0,Math.PI*2);bx.stroke();
+      bx.strokeStyle=`rgba(255,230,100,${haloPulse*0.5})`;bx.lineWidth=1;
+      bx.beginPath();bx.ellipse(mePx,mePy-16,9,3.5,0,0,Math.PI*2);bx.stroke();
+      bx.lineWidth=1;
+    }
+
+    // ---- Leviathan Rod (rod_do3) - BIG realistic ocean wave with spray and foam ----
+    else if(eqRodId==='rod_do3'){
+      const wt=time*3.5;
+      // Deep dark water base
+      bx.fillStyle='#0a3050';
+      bx.beginPath();bx.moveTo(mePx-18,mtY+8);
+      for(let wx=0;wx<=36;wx+=1){
+        bx.lineTo(mePx-18+wx,mtY+2+Math.sin(wt+wx*0.2)*3.5+Math.sin(wt*1.3+wx*0.35)*1.5);
+      }
+      bx.lineTo(mePx+18,mtY+8);bx.closePath();bx.fill();
+      // Mid-tone wave layer
+      bx.fillStyle='#1a6080';
+      bx.beginPath();bx.moveTo(mePx-16,mtY+7);
+      for(let wx=0;wx<=32;wx+=1){
+        bx.lineTo(mePx-16+wx,mtY+Math.sin(wt+wx*0.22)*3+Math.sin(wt*1.5+wx*0.4)*1.5);
+      }
+      bx.lineTo(mePx+16,mtY+7);bx.closePath();bx.fill();
+      // Light wave crest
+      bx.fillStyle='#2a90b0';
+      bx.beginPath();bx.moveTo(mePx-14,mtY+6);
+      for(let wx=0;wx<=28;wx+=1){
+        bx.lineTo(mePx-14+wx,mtY-1+Math.sin(wt+wx*0.25)*2.5);
+      }
+      bx.lineTo(mePx+14,mtY+6);bx.closePath();bx.fill();
+      // Foam caps - white wave tops
+      bx.fillStyle='#d0f0ff';
+      for(let wx=0;wx<30;wx+=2){
+        const wy=mtY-2+Math.sin(wt+wx*0.25)*2.5;
+        bx.fillRect(mePx-14+wx,wy-1,2,1);
+      }
+      // Bright white foam highlights
+      bx.fillStyle='#ffffff';
+      for(let wx=0;wx<28;wx+=4){
+        const wy=mtY-2+Math.sin(wt+wx*0.25)*2.5;
+        bx.fillRect(mePx-13+wx,wy-1,1,1);
+      }
+      // Spray particles rising from wave peaks
+      for(let i=0;i<5;i++){
+        const sx=mePx-10+i*5;
+        const baseWy=mtY-2+Math.sin(wt+((i*5)*0.25))*2.5;
+        const sprayH=Math.abs(Math.sin(time*4+i*1.7))*4;
+        bx.fillStyle='rgba(200,240,255,0.6)';
+        bx.fillRect(sx,baseWy-sprayH-2,1,1);
+        bx.fillStyle='rgba(220,250,255,0.4)';
+        bx.fillRect(sx+1,baseWy-sprayH-3,1,1);
+      }
+      // Water depth shading at bottom
+      bx.fillStyle='#062840';
+      bx.beginPath();bx.ellipse(mePx,mtY+7,16,2,0,0,Math.PI*2);bx.fill();
+    }
+
+    // ---- Trench/Abyss Rod (rod_do1/rod_do2) - Small realistic wave ----
+    else if(eqRodId==='rod_do1'||eqRodId==='rod_do2'){
+      const wt=time*3;
+      const bob=Math.sin(time*1.5)*0.8;
+      // Dark water base
+      bx.fillStyle='#0d3858';
+      bx.beginPath();bx.moveTo(mePx-12,mtY+6+bob);
+      for(let wx=0;wx<=24;wx+=1){
+        bx.lineTo(mePx-12+wx,mtY+1+bob+Math.sin(wt+wx*0.3)*2.5);
+      }
+      bx.lineTo(mePx+12,mtY+6+bob);bx.closePath();bx.fill();
+      // Lighter wave crest
+      bx.fillStyle='#1a6888';
+      bx.beginPath();bx.moveTo(mePx-10,mtY+5+bob);
+      for(let wx=0;wx<=20;wx+=1){
+        bx.lineTo(mePx-10+wx,mtY+bob+Math.sin(wt+wx*0.35)*2);
+      }
+      bx.lineTo(mePx+10,mtY+5+bob);bx.closePath();bx.fill();
+      // Foam caps
+      bx.fillStyle='#a0d8e8';
+      for(let wx=0;wx<20;wx+=3){
+        const wy=mtY+bob+Math.sin(wt+wx*0.35)*2;
+        bx.fillRect(mePx-10+wx,wy-1,2,1);
+      }
+      // White highlights
+      bx.fillStyle='#d0f0ff';
+      for(let wx=0;wx<18;wx+=5){
+        bx.fillRect(mePx-9+wx,mtY-1+bob+Math.sin(wt+wx*0.35)*2,1,1);
+      }
+    }
+
+    // ---- Abyss Heart Rod (rod_at3) - Realistic deep-sea jellyfish ----
+    else if(eqRodId==='rod_at3'){
+      const pulse=0.6+Math.sin(time*2.0)*0.3;
+      const bob=Math.sin(time*1.2)*1.5;
+      // Outer glow
+      bx.fillStyle=`rgba(0,160,200,${pulse*0.15})`;
+      bx.beginPath();bx.ellipse(mePx,mtY-2+bob,12,8,0,0,Math.PI*2);bx.fill();
+      // Bell - translucent dome (darker underside)
+      bx.fillStyle=`rgba(0,80,120,${pulse*0.4})`;
+      bx.beginPath();bx.ellipse(mePx,mtY-1+bob,10,7,0,Math.PI,Math.PI*2);bx.fill();
+      // Bell mid layer
+      bx.fillStyle=`rgba(0,180,220,${pulse*0.35})`;
+      bx.beginPath();bx.ellipse(mePx,mtY-2+bob,8,6,0,Math.PI,Math.PI*2);bx.fill();
+      // Bell highlight top
+      bx.fillStyle=`rgba(100,230,255,${pulse*0.3})`;
+      bx.beginPath();bx.ellipse(mePx,mtY-4+bob,5,3,0,Math.PI,Math.PI*2);bx.fill();
+      // Bell bright spot
+      bx.fillStyle=`rgba(180,255,255,${pulse*0.4})`;
+      bx.beginPath();bx.ellipse(mePx-2,mtY-5+bob,2,1.5,0,0,Math.PI*2);bx.fill();
+      // Inner organs (gonads visible through bell)
+      bx.fillStyle=`rgba(255,180,100,${pulse*0.3})`;
+      bx.beginPath();bx.ellipse(mePx,mtY-2+bob,3,2,0,0,Math.PI*2);bx.fill();
+      // Oral arms (shorter, thicker)
+      for(let i=0;i<4;i++){
+        const ox=mePx-4+i*3;
+        const sway=Math.sin(time*1.8+i*1.2)*2;
+        bx.fillStyle=`rgba(0,180,220,${pulse*0.3})`;
+        bx.fillRect(ox+sway*0.3,mtY-1+bob,2,4);
+        bx.fillRect(ox+sway*0.5,mtY+3+bob,1,3);
+      }
+      // Trailing tentacles (long, thin, wavy)
+      for(let i=0;i<6;i++){
+        const tx=mePx-6+i*2.5;
+        bx.fillStyle=`rgba(0,160,220,${pulse*0.2})`;
+        for(let j=0;j<6;j++){
+          const sway=Math.sin(time*1.5+i*0.8+j*0.5)*2;
+          bx.fillRect(tx+sway,mtY+5+bob+j*2,1,2);
+        }
+      }
+      // Bioluminescent spots
+      const sparkle=Math.sin(time*4)*0.3+0.3;
+      bx.fillStyle=`rgba(150,255,255,${sparkle})`;
+      bx.fillRect(mePx-4,mtY-4+bob,1,1);
+      bx.fillRect(mePx+3,mtY-3+bob,1,1);
+      bx.fillRect(mePx,mtY-6+bob,1,1);
+    }
+
+    // ---- Cloud Rod sk2 done above, Gale Rod (rod_wt2) - Swirling wind disc ----
+    else if(eqRodId==='rod_wt2'){
+      const spin=time*3;
+      // Outer wind ring
+      bx.strokeStyle='rgba(180,220,255,0.5)';bx.lineWidth=2;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,13,5,0,0,Math.PI*2);bx.stroke();
+      // Inner ring
+      bx.strokeStyle='rgba(200,235,255,0.4)';bx.lineWidth=1;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,9,3.5,0,0,Math.PI*2);bx.stroke();
+      // Swirling air current streaks
+      for(let i=0;i<6;i++){
+        const a=spin+i*1.047;
+        const r1=6+Math.sin(time*2+i)*2;
+        const r2=r1+4;
+        const x1=mePx+Math.cos(a)*r1,y1=mtY+2+Math.sin(a)*r1*0.38;
+        const x2=mePx+Math.cos(a+0.4)*r2,y2=mtY+2+Math.sin(a+0.4)*r2*0.38;
+        bx.strokeStyle=`rgba(200,230,255,${0.5-i*0.06})`;bx.lineWidth=1;
+        bx.beginPath();bx.moveTo(x1,y1);bx.lineTo(x2,y2);bx.stroke();
+      }
+      // Center vortex
+      bx.fillStyle='rgba(220,240,255,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,4,2,spin*0.5,0,Math.PI*2);bx.fill();
+      // Dust particles caught in wind
+      for(let i=0;i<4;i++){
+        const a=spin*1.5+i*1.57;const r=8+Math.sin(time*2+i)*3;
+        bx.fillStyle='rgba(220,240,255,0.5)';
+        bx.fillRect(mePx+Math.cos(a)*r,mtY+2+Math.sin(a)*r*0.38,2,1);
+      }
+      bx.lineWidth=1;
+    }
+
+    // ---- Spirit Rod (rod_wt3) - Ghostly spirit figure ----
+    else if(eqRodId==='rod_wt3'){
+      const bob=Math.sin(time*1.5)*1.5;
+      const sway=Math.sin(time*1.0)*1;
+      // Outer ghostly aura
+      bx.fillStyle='rgba(180,200,240,0.1)';
+      bx.beginPath();bx.ellipse(mePx+sway,mtY+2+bob,14,8,0,0,Math.PI*2);bx.fill();
+      // Ghost body - translucent torso
+      bx.fillStyle='rgba(200,220,255,0.25)';
+      bx.beginPath();bx.ellipse(mePx+sway,mtY+1+bob,8,6,0,0,Math.PI*2);bx.fill();
+      // Ghost head
+      bx.fillStyle='rgba(220,235,255,0.3)';
+      bx.beginPath();bx.ellipse(mePx+sway,mtY-4+bob,5,4,0,0,Math.PI*2);bx.fill();
+      // Highlight on head
+      bx.fillStyle='rgba(240,248,255,0.35)';
+      bx.beginPath();bx.ellipse(mePx-1+sway,mtY-5+bob,3,2,0,0,Math.PI*2);bx.fill();
+      // Eyes - hollow glowing
+      bx.fillStyle='rgba(180,200,255,0.6)';
+      bx.fillRect(mePx-3+sway,mtY-5+bob,2,1);
+      bx.fillRect(mePx+1+sway,mtY-5+bob,2,1);
+      // Wispy trailing bottom (tattered ghost tail)
+      for(let i=0;i<5;i++){
+        const tailSway=Math.sin(time*2+i*0.9)*2;
+        const alpha=0.2-i*0.03;
+        bx.fillStyle=`rgba(200,220,255,${alpha})`;
+        bx.fillRect(mePx-5+i*2.5+tailSway+sway,mtY+6+bob+i*2,2,3);
+      }
+      // Wispy arm reaching
+      bx.fillStyle='rgba(200,220,255,0.15)';
+      bx.beginPath();bx.moveTo(mePx-3+sway,mtY-1+bob);bx.lineTo(mePx-10+sway+Math.sin(time*1.5)*2,mtY+bob);
+      bx.lineTo(mePx-8+sway+Math.sin(time*1.5)*2,mtY+2+bob);bx.lineTo(mePx-3+sway,mtY+1+bob);bx.fill();
+    }
+
+    // ---- Dragon Bone Rod (rod_dl1) - Bone dragon mount ----
+    else if(eqRodId==='rod_dl1'){
+      const bob=Math.sin(time*1.2)*0.8;
+      // Spine / rib cage body
+      bx.fillStyle='#a89878';
+      bx.beginPath();bx.ellipse(mePx,mtY+2+bob,12,5,0,0,Math.PI*2);bx.fill();
+      bx.fillStyle='#c0b090';
+      bx.beginPath();bx.ellipse(mePx,mtY+1+bob,10,4,0,0,Math.PI*2);bx.fill();
+      // Rib bones across body
+      bx.strokeStyle='#d0c0a0';bx.lineWidth=1;
+      for(let i=0;i<5;i++){
+        const rx=mePx-6+i*3;
+        bx.beginPath();bx.moveTo(rx,mtY-2+bob);bx.lineTo(rx,mtY+4+bob);bx.stroke();
+      }
+      // Skull head (facing right)
+      bx.fillStyle='#d0c0a0';
+      bx.fillRect(mePx+10,mtY-2+bob,7,5);
+      bx.fillStyle='#c0b090';
+      bx.fillRect(mePx+11,mtY-1+bob,5,3);
+      // Jaw
+      bx.fillStyle='#b0a080';
+      bx.fillRect(mePx+11,mtY+2+bob,5,2);
+      // Eye sockets (glowing red)
+      bx.fillStyle='#ff3300';
+      bx.fillRect(mePx+12,mtY-1+bob,2,1);
+      bx.fillStyle='#800';
+      bx.fillRect(mePx+15,mtY-1+bob,1,1);
+      // Horns
+      bx.fillStyle='#c0b090';
+      bx.beginPath();bx.moveTo(mePx+12,mtY-2+bob);bx.lineTo(mePx+10,mtY-6+bob);bx.lineTo(mePx+13,mtY-2+bob);bx.fill();
+      bx.beginPath();bx.moveTo(mePx+15,mtY-2+bob);bx.lineTo(mePx+17,mtY-6+bob);bx.lineTo(mePx+16,mtY-2+bob);bx.fill();
+      // Bony wings (skeletal, no membrane)
+      bx.strokeStyle='#c0b090';bx.lineWidth=1;
+      // Left wing
+      bx.beginPath();bx.moveTo(mePx-4,mtY-1+bob);bx.lineTo(mePx-12,mtY-8+bob);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx-12,mtY-8+bob);bx.lineTo(mePx-15,mtY-4+bob);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx-12,mtY-8+bob);bx.lineTo(mePx-10,mtY-3+bob);bx.stroke();
+      // Right wing
+      bx.beginPath();bx.moveTo(mePx+4,mtY-1+bob);bx.lineTo(mePx+8,mtY-8+bob);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx+8,mtY-8+bob);bx.lineTo(mePx+5,mtY-3+bob);bx.stroke();
+      // Tail bones
+      for(let t=0;t<4;t++){
+        const tsx=mePx-12-t*3;
+        const tsy=mtY+2+bob+Math.sin(time*2+t*0.8)*1.5;
+        bx.fillStyle=t<2?'#c0b090':'#a89878';
+        bx.fillRect(tsx,tsy,3,2);
+      }
+      bx.lineWidth=1;
+    }
+
+    // ---- Wyrm Rod (rod_dl2) - Fire wyrm serpentine body ----
+    else if(eqRodId==='rod_dl2'){
+      // Serpentine body segments
+      for(let i=0;i<10;i++){
+        const a=time*1.8+i*0.5;
+        const wx=mePx-14+i*3.2+Math.sin(a)*2;
+        const wy=mtY+2+Math.cos(a)*(1.5+Math.sin(i*0.3)*0.8);
+        const sz=i<2?2:i>8?2:3;
+        // Dark underbelly
+        bx.fillStyle=i<3?'#801808':'#a02810';
+        bx.fillRect(wx-1,wy,sz,sz);
+        // Bright top scales
+        bx.fillStyle=i<3?'#c04020':'#e06830';
+        bx.fillRect(wx-1,wy-1,sz,sz-1);
+      }
+      // Head (right side)
+      const hx=mePx+18+Math.sin(time*1.8+5)*1.5;
+      const hy=mtY+1+Math.cos(time*1.8+5)*1;
+      bx.fillStyle='#c04020';bx.fillRect(hx-3,hy-2,6,5);
+      bx.fillStyle='#e06830';bx.fillRect(hx-2,hy-1,4,3);
+      // Glowing eyes
+      bx.fillStyle='#ffaa00';bx.fillRect(hx-1,hy-1,1,1);
+      bx.fillStyle='#ffaa00';bx.fillRect(hx+2,hy-1,1,1);
+      // Jaw/mouth
+      bx.fillStyle='#600';bx.fillRect(hx+1,hy+1,2,1);
+      // Fire trail behind
+      for(let f=0;f<4;f++){
+        const fx=mePx-16-f*3+Math.sin(time*5+f)*2;
+        const fy=mtY+2+Math.sin(time*3+f*1.2)*2;
+        bx.fillStyle=f<2?'#ff6020':'#ffaa40';
+        bx.fillRect(fx,fy,2,2-f*0.3);
+        bx.fillStyle='#ffd060';
+        bx.fillRect(fx,fy-1,1,1);
+      }
+      // Small smoke wisps
+      for(let s=0;s<2;s++){
+        const sy=mtY-2-s*2+Math.sin(time*2+s)*1;
+        bx.fillStyle=`rgba(80,40,20,${0.3-s*0.1})`;
+        bx.fillRect(mePx-18-s*2,sy,2,1);
+      }
+    }
+
+    // ---- Thunder Rod (rod_sp2) - Crackling lightning bolt platform ----
+    else if(eqRodId==='rod_sp2'){
+      const flash=Math.sin(time*8)>0?1:0.7;
+      // Glow underneath
+      bx.fillStyle=`rgba(255,255,100,${0.2*flash})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+3,14,5,0,0,Math.PI*2);bx.fill();
+      // Main lightning bolt shape - zigzag platform
+      bx.fillStyle=`rgba(255,255,60,${flash})`;
+      bx.beginPath();
+      bx.moveTo(mePx-12,mtY+1);bx.lineTo(mePx-6,mtY-1);bx.lineTo(mePx-8,mtY+1);
+      bx.lineTo(mePx-2,mtY-2);bx.lineTo(mePx-3,mtY+1);bx.lineTo(mePx+3,mtY-1);
+      bx.lineTo(mePx+2,mtY+1);bx.lineTo(mePx+8,mtY-2);bx.lineTo(mePx+6,mtY+1);
+      bx.lineTo(mePx+12,mtY);bx.lineTo(mePx+12,mtY+3);
+      bx.lineTo(mePx-12,mtY+3);bx.closePath();bx.fill();
+      // Bright white core
+      bx.fillStyle='#ffffff';
+      bx.fillRect(mePx-4,mtY,8,2);
+      // Crackling sparks
+      for(let i=0;i<4;i++){
+        if(Math.sin(time*12+i*3)>0.3){
+          const sx=mePx-10+i*7+Math.sin(time*6+i)*2;
+          const sy=mtY-2+Math.sin(time*8+i*2)*2;
+          bx.fillStyle='#ffffff';bx.fillRect(sx,sy,1,1);
+          bx.fillStyle='#ffff80';bx.fillRect(sx+1,sy+1,1,1);
+        }
+      }
+      // Electric arcs from edges
+      if(Math.sin(time*10)>0){
+        bx.strokeStyle='#aaccff';bx.lineWidth=1;
+        bx.beginPath();bx.moveTo(mePx-12,mtY);bx.lineTo(mePx-14,mtY-3);bx.lineTo(mePx-13,mtY-1);bx.stroke();
+        bx.beginPath();bx.moveTo(mePx+12,mtY);bx.lineTo(mePx+14,mtY-3);bx.lineTo(mePx+13,mtY-1);bx.stroke();
+        bx.lineWidth=1;
+      }
+    }
+
+    // ---- Tempest Rod (rod_sp3) - Mini tornado with visible spinning funnel ----
+    else if(eqRodId==='rod_sp3'){
+      // Debris/dust at base
+      bx.fillStyle='rgba(160,140,110,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY+4,14,4,0,0,Math.PI*2);bx.fill();
+      // Funnel layers - wide at bottom, narrow at top
+      for(let i=0;i<14;i++){
+        const spin=time*5+i*0.7;
+        const w=12-i*0.7; // narrows toward top
+        const yp=mtY+4-i*1.3;
+        const alpha=0.45-i*0.02;
+        const shade=150+i*5;
+        // Each ring of the tornado
+        bx.strokeStyle=`rgba(${shade},${shade+10},${shade+20},${alpha})`;
+        bx.lineWidth=1;
+        bx.beginPath();
+        bx.ellipse(mePx+Math.sin(spin)*1,yp,w,w*0.35,spin*0.1,0,Math.PI*2);
+        bx.stroke();
+      }
+      // Flying debris particles
+      for(let d=0;d<5;d++){
+        const da=time*4+d*1.26;
+        const dr=5+d*1.5;
+        const dy=mtY+2-d*2.5;
+        bx.fillStyle=`rgba(140,120,90,${0.5-d*0.08})`;
+        bx.fillRect(mePx+Math.cos(da)*dr,dy+Math.sin(da)*dr*0.3,2,1);
+      }
+      // Inner dark core
+      bx.fillStyle='rgba(100,100,110,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY-6,3,2,0,0,Math.PI*2);bx.fill();
+      bx.lineWidth=1;
+    }
+
+    // ---- Lightning Spear (rod_tf2) - Electric energy disc with sparks ----
+    else if(eqRodId==='rod_tf2'){
+      const pulse=0.6+Math.sin(time*4)*0.3;
+      // Outer energy ring
+      bx.fillStyle=`rgba(100,200,255,${pulse*0.3})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,13,5,0,0,Math.PI*2);bx.fill();
+      // Inner bright disc
+      bx.fillStyle=`rgba(180,240,255,${pulse*0.4})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,10,4,0,0,Math.PI*2);bx.fill();
+      // Core glow
+      bx.fillStyle=`rgba(255,255,200,${pulse*0.5})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,5,2,0,0,Math.PI*2);bx.fill();
+      // Rotating electric arcs
+      for(let i=0;i<4;i++){
+        const a=time*5+i*1.57;
+        const x1=mePx+Math.cos(a)*5,y1=mtY+2+Math.sin(a)*2;
+        const x2=mePx+Math.cos(a)*11,y2=mtY+2+Math.sin(a)*4;
+        bx.strokeStyle=`rgba(120,220,255,${pulse*0.6})`;bx.lineWidth=1;
+        bx.beginPath();bx.moveTo(x1,y1);
+        bx.lineTo((x1+x2)/2+Math.sin(time*10+i)*2,(y1+y2)/2+Math.cos(time*10+i)*1);
+        bx.lineTo(x2,y2);bx.stroke();
+      }
+      // Bright sparks popping off
+      for(let s=0;s<3;s++){
+        if(Math.sin(time*9+s*3.3)>0.4){
+          const sa=time*3+s*2.1;
+          bx.fillStyle='#ffffff';
+          bx.fillRect(mePx+Math.cos(sa)*12,mtY+1+Math.sin(sa)*4,1,1);
+        }
+      }
+      bx.lineWidth=1;
+    }
+
+    // ---- Thor's Rod (rod_tf3) - Mjolnir hammer with runes ----
+    else if(eqRodId==='rod_tf3'){
+      const bob=Math.sin(time*1.5)*0.8;
+      // Handle - wrapped leather
+      bx.fillStyle='#4a2a10';bx.fillRect(mePx-1,mtY+2+bob,3,10);
+      bx.fillStyle='#5a3a1a';bx.fillRect(mePx-1,mtY+3+bob,3,2);
+      bx.fillRect(mePx-1,mtY+7+bob,3,2);
+      // Handle wrapping detail
+      bx.fillStyle='#6a4a2a';bx.fillRect(mePx,mtY+4+bob,1,1);bx.fillRect(mePx,mtY+8+bob,1,1);
+      // Pommel (bottom of handle)
+      bx.fillStyle='#7a7a8a';bx.fillRect(mePx-1,mtY+11+bob,3,2);
+      // Hammer head - dark steel base
+      bx.fillStyle='#5a5a6a';bx.fillRect(mePx-8,mtY-3+bob,17,7);
+      // Lighter steel face
+      bx.fillStyle='#7a7a8a';bx.fillRect(mePx-7,mtY-2+bob,15,5);
+      // Bright top edge highlight
+      bx.fillStyle='#9a9aaa';bx.fillRect(mePx-7,mtY-2+bob,15,2);
+      // Shiny highlight spot
+      bx.fillStyle='#b0b0c0';bx.fillRect(mePx-5,mtY-2+bob,4,1);
+      // Rune engravings (glowing blue)
+      const runePulse=0.5+Math.sin(time*2.5)*0.3;
+      bx.fillStyle=`rgba(120,180,255,${runePulse})`;
+      // Rune marks on hammer face
+      bx.fillRect(mePx-5,mtY+bob,1,2);bx.fillRect(mePx-4,mtY-1+bob,1,1);
+      bx.fillRect(mePx+1,mtY+bob,2,1);bx.fillRect(mePx+1,mtY-1+bob,1,2);
+      bx.fillRect(mePx+5,mtY+bob,1,2);bx.fillRect(mePx+4,mtY+1+bob,2,1);
+      // Side edges (darker)
+      bx.fillStyle='#4a4a5a';
+      bx.fillRect(mePx-8,mtY-3+bob,1,7);bx.fillRect(mePx+8,mtY-3+bob,1,7);
+      // Lightning crackle around hammer
+      if(Math.sin(time*6)>0.3){
+        bx.strokeStyle=`rgba(180,220,255,${runePulse})`;bx.lineWidth=1;
+        bx.beginPath();bx.moveTo(mePx-9,mtY+bob);bx.lineTo(mePx-12,mtY-2+bob);bx.stroke();
+        bx.beginPath();bx.moveTo(mePx+9,mtY+bob);bx.lineTo(mePx+12,mtY-2+bob);bx.stroke();
+        bx.lineWidth=1;
+      }
+    }
+
+    // ---- Shadow Rod (rod_vw1) - Shadow beast (dark wolf/cat shape) ----
+    else if(eqRodId==='rod_vw1'){
+      const bob=Math.sin(time*1.5)*0.8;
+      const breathe=Math.sin(time*2)*0.5;
+      // Shadow ground aura
+      bx.fillStyle='rgba(20,5,40,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY+4+bob,14,4,0,0,Math.PI*2);bx.fill();
+      // Body - dark crouching beast shape
+      bx.fillStyle='#1a0830';
+      bx.beginPath();bx.ellipse(mePx,mtY+2+bob,11,5+breathe,0,0,Math.PI*2);bx.fill();
+      // Slightly lighter top fur
+      bx.fillStyle='#2a1040';
+      bx.beginPath();bx.ellipse(mePx,mtY+1+bob,9,4,0,0,Math.PI*2);bx.fill();
+      // Head (right side, wolf/cat)
+      bx.fillStyle='#1a0830';
+      bx.fillRect(mePx+9,mtY-2+bob,6,5);
+      bx.fillStyle='#2a1040';
+      bx.fillRect(mePx+10,mtY-1+bob,4,3);
+      // Pointed ears
+      bx.fillStyle='#1a0830';
+      bx.beginPath();bx.moveTo(mePx+10,mtY-2+bob);bx.lineTo(mePx+9,mtY-6+bob);bx.lineTo(mePx+12,mtY-2+bob);bx.fill();
+      bx.beginPath();bx.moveTo(mePx+13,mtY-2+bob);bx.lineTo(mePx+14,mtY-6+bob);bx.lineTo(mePx+15,mtY-2+bob);bx.fill();
+      // Glowing purple eyes
+      const eyePulse=0.6+Math.sin(time*3)*0.3;
+      bx.fillStyle=`rgba(200,80,255,${eyePulse})`;
+      bx.fillRect(mePx+10,mtY-1+bob,2,1);
+      bx.fillRect(mePx+13,mtY-1+bob,2,1);
+      // Eye glow halo
+      bx.fillStyle=`rgba(180,60,255,${eyePulse*0.3})`;
+      bx.fillRect(mePx+9,mtY-2+bob,7,3);
+      // Tail (left, curving up)
+      for(let t=0;t<5;t++){
+        const tx=mePx-10-t*2;
+        const ty=mtY+1+bob-t*0.8+Math.sin(time*2+t*0.5)*1.5;
+        bx.fillStyle=t<3?'#1a0830':'#150628';
+        bx.fillRect(tx,ty,3,2);
+      }
+      // Shadow wisps rising
+      for(let w=0;w<3;w++){
+        const wy=mtY-2+bob-w*3;
+        const wx=mePx-4+w*4+Math.sin(time*2+w)*2;
+        bx.fillStyle=`rgba(30,10,50,${0.2-w*0.05})`;
+        bx.fillRect(wx,wy,2,2);
+      }
+    }
+
+    // ---- Void Rod (rod_vw2) - Void portal disc with dark swirling energy ----
+    else if(eqRodId==='rod_vw2'){
+      const spin=time*2;
+      // Outer dark ring
+      bx.fillStyle='rgba(15,0,30,0.7)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,13,5,0,0,Math.PI*2);bx.fill();
+      // Mid ring - deep purple
+      bx.fillStyle='rgba(40,10,80,0.6)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,10,4,0,0,Math.PI*2);bx.fill();
+      // Inner void - near black
+      bx.fillStyle='rgba(5,0,10,0.85)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,6,2.5,0,0,Math.PI*2);bx.fill();
+      // Swirling energy spirals
+      for(let i=0;i<6;i++){
+        const a=spin+i*1.047;
+        const r=4+i%3*3;
+        const x=mePx+Math.cos(a)*r;
+        const y=mtY+2+Math.sin(a)*r*0.4;
+        bx.fillStyle=i%2===0?'rgba(120,40,200,0.5)':'rgba(80,20,160,0.4)';
+        bx.fillRect(x,y,2,1);
+      }
+      // Bright purple edge particles
+      for(let i=0;i<4;i++){
+        const a=spin*1.5+i*1.57;
+        bx.fillStyle='rgba(180,80,255,0.5)';
+        bx.fillRect(mePx+Math.cos(a)*12,mtY+2+Math.sin(a)*4.5,1,1);
+      }
+      // Center bright dot (singularity)
+      bx.fillStyle=`rgba(200,100,255,${0.4+Math.sin(time*4)*0.2})`;
+      bx.fillRect(mePx-1,mtY+1,2,2);
+    }
+
+    // ---- Starlight Rod (rod_dn1) - Floating star cluster platform ----
+    else if(eqRodId==='rod_dn1'){
+      const bob=Math.sin(time*1.3)*1;
+      // Dark cosmic platform base
+      bx.fillStyle='rgba(20,10,50,0.5)';
+      bx.beginPath();bx.ellipse(mePx,mtY+3+bob,13,5,0,0,Math.PI*2);bx.fill();
+      // Purple nebula glow
+      bx.fillStyle='rgba(80,40,140,0.35)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2+bob,11,4,0,0,Math.PI*2);bx.fill();
+      // Star cluster - various sized stars
+      const stars=[[0,-2,2],[5,0,1.5],[-5,1,1.5],[3,-3,1],[-3,-1,1],[7,1,1],[-7,0,1],[2,2,0.8],[-4,3,0.8],[6,-1,0.8]];
+      for(let s=0;s<stars.length;s++){
+        const [sx,sy,sz]=stars[s];
+        const twinkle=0.5+Math.sin(time*3+s*1.1)*0.5;
+        // Star glow
+        bx.fillStyle=`rgba(200,180,255,${twinkle*0.3})`;
+        bx.beginPath();bx.ellipse(mePx+sx,mtY+sy+bob,sz+1,sz*0.5+0.5,0,0,Math.PI*2);bx.fill();
+        // Star core
+        bx.fillStyle=`rgba(255,240,255,${twinkle*0.8})`;
+        bx.fillRect(mePx+sx-0.5,mtY+sy+bob-0.5,sz,sz*0.6);
+      }
+      // Connecting constellation lines (faint)
+      bx.strokeStyle='rgba(180,160,220,0.15)';bx.lineWidth=1;
+      bx.beginPath();bx.moveTo(mePx,mtY-2+bob);bx.lineTo(mePx+5,mtY+bob);bx.lineTo(mePx+3,mtY-3+bob);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx,mtY-2+bob);bx.lineTo(mePx-5,mtY+1+bob);bx.lineTo(mePx-3,mtY-1+bob);bx.stroke();
+      bx.lineWidth=1;
+    }
+
+    // ---- Dark Star Rod (rod_dn2) - Black hole with accretion disc ----
+    else if(eqRodId==='rod_dn2'){
+      const spin=time*2;
+      // Outer accretion disc glow
+      bx.fillStyle='rgba(255,120,40,0.2)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,14,6,0,0,Math.PI*2);bx.fill();
+      // Accretion disc - hot gas ring
+      bx.strokeStyle='rgba(255,160,60,0.5)';bx.lineWidth=2;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,12,5,0,0,Math.PI*2);bx.stroke();
+      bx.strokeStyle='rgba(255,200,100,0.4)';bx.lineWidth=1;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,10,4,0,0,Math.PI*2);bx.stroke();
+      // Inner dark ring
+      bx.fillStyle='rgba(10,0,20,0.8)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,7,3,0,0,Math.PI*2);bx.fill();
+      // Event horizon - pure black
+      bx.fillStyle='#000000';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,4,2,0,0,Math.PI*2);bx.fill();
+      // Gravitational lensing particles (orbiting fast)
+      for(let i=0;i<6;i++){
+        const a=spin*3+i*1.047;
+        const r=8+Math.sin(time*2+i)*2;
+        const bright=i%3===0?'rgba(255,200,100,0.6)':'rgba(255,140,50,0.4)';
+        bx.fillStyle=bright;
+        bx.fillRect(mePx+Math.cos(a)*r,mtY+2+Math.sin(a)*r*0.4,1,1);
+      }
+      // Jets from poles (faint)
+      const jetAlpha=0.15+Math.sin(time*3)*0.1;
+      bx.fillStyle=`rgba(180,140,255,${jetAlpha})`;
+      bx.fillRect(mePx-1,mtY-4,2,3);
+      bx.fillRect(mePx-1,mtY+5,2,3);
+      bx.lineWidth=1;
+    }
+
+    // ---- Rift Rod (rod_ch1) - Reality tear / cracked glowing rift ----
+    else if(eqRodId==='rod_ch1'){
+      const pulse=0.5+Math.sin(time*3)*0.3;
+      // Distortion field around rift
+      bx.fillStyle=`rgba(60,0,0,${pulse*0.2})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,13,5,0,0,Math.PI*2);bx.fill();
+      // Dark platform base
+      bx.fillStyle='rgba(30,0,10,0.5)';
+      bx.beginPath();bx.ellipse(mePx,mtY+3,11,4,0,0,Math.PI*2);bx.fill();
+      // Main rift crack - jagged vertical tear
+      bx.fillStyle='#000000';
+      bx.beginPath();
+      bx.moveTo(mePx-1,mtY-5);bx.lineTo(mePx+1,mtY-3);bx.lineTo(mePx-1,mtY-1);
+      bx.lineTo(mePx+2,mtY+1);bx.lineTo(mePx,mtY+3);bx.lineTo(mePx+1,mtY+5);
+      bx.lineTo(mePx-1,mtY+5);bx.lineTo(mePx-2,mtY+3);bx.lineTo(mePx,mtY+1);
+      bx.lineTo(mePx-2,mtY-1);bx.lineTo(mePx,mtY-3);bx.lineTo(mePx-1,mtY-5);
+      bx.closePath();bx.fill();
+      // Red glow along crack edges
+      bx.strokeStyle=`rgba(255,0,60,${pulse})`;bx.lineWidth=1;
+      bx.beginPath();bx.moveTo(mePx-2,mtY-5);bx.lineTo(mePx,mtY-3);bx.lineTo(mePx-2,mtY-1);
+      bx.lineTo(mePx+1,mtY+1);bx.lineTo(mePx-1,mtY+3);bx.lineTo(mePx,mtY+5);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx+1,mtY-5);bx.lineTo(mePx+2,mtY-3);bx.lineTo(mePx+1,mtY-1);
+      bx.lineTo(mePx+3,mtY+1);bx.lineTo(mePx+1,mtY+3);bx.lineTo(mePx+2,mtY+5);bx.stroke();
+      // Branching cracks
+      bx.strokeStyle=`rgba(255,30,80,${pulse*0.6})`;
+      bx.beginPath();bx.moveTo(mePx,mtY-1);bx.lineTo(mePx+5,mtY-3);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx+1,mtY+1);bx.lineTo(mePx-5,mtY+2);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx-1,mtY+3);bx.lineTo(mePx+4,mtY+4);bx.stroke();
+      // Glowing particles leaking from rift
+      for(let p=0;p<3;p++){
+        const py=mtY-4+p*3+Math.sin(time*2+p)*1;
+        const px=mePx+Math.sin(time*3+p*2)*3;
+        bx.fillStyle=`rgba(255,40,80,${pulse*0.5})`;
+        bx.fillRect(px+2,py,1,1);
+      }
+      bx.lineWidth=1;
+    }
+
+    // ---- Entropy Rod (rod_ch2) - Chaos rift (red/black swirling unstable platform) ----
+    else if(eqRodId==='rod_ch2'){
+      const spin=time*2.5;
+      const wobble=Math.sin(time*4)*1.5;
+      // Unstable outer field
+      bx.fillStyle='rgba(40,0,0,0.4)';
+      bx.beginPath();bx.ellipse(mePx+wobble*0.3,mtY+2,14+Math.sin(time*3),5,0,0,Math.PI*2);bx.fill();
+      // Red energy layer
+      bx.fillStyle='rgba(120,0,0,0.5)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,11,4,0,0,Math.PI*2);bx.fill();
+      // Black void core
+      bx.fillStyle='rgba(0,0,0,0.7)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2,6,2.5,0,0,Math.PI*2);bx.fill();
+      // Swirling red/black energy particles
+      for(let i=0;i<8;i++){
+        const a=spin+i*0.785;
+        const r=5+Math.sin(time*3+i)*3;
+        const x=mePx+Math.cos(a)*r;
+        const y=mtY+2+Math.sin(a)*r*0.4;
+        bx.fillStyle=i%2===0?'rgba(255,30,30,0.6)':'rgba(20,0,0,0.7)';
+        bx.fillRect(x,y,2,1);
+      }
+      // Unstable lightning/cracks
+      if(Math.sin(time*7)>0.2){
+        bx.strokeStyle='rgba(255,60,40,0.6)';bx.lineWidth=1;
+        const cx=mePx+Math.sin(time*5)*4;
+        bx.beginPath();bx.moveTo(cx,mtY-1);bx.lineTo(cx+3,mtY+1);bx.lineTo(cx-1,mtY+3);bx.stroke();
+        bx.lineWidth=1;
+      }
+      // Sparks flying off
+      for(let s=0;s<3;s++){
+        const sa=time*4+s*2.1;
+        const sr=13+Math.sin(time*3+s)*2;
+        bx.fillStyle='rgba(255,80,40,0.5)';
+        bx.fillRect(mePx+Math.cos(sa)*sr,mtY+2+Math.sin(sa)*sr*0.4,1,1);
+      }
+    }
+
+    // ---- Diamond Rod (rod_c3) - Crystal throne (geometric crystal shape) ----
+    else if(eqRodId==='rod_c3'){
+      const bob=Math.sin(time*1.2)*0.8;
+      const sparkTime=time*4;
+      // Shadow underneath
+      bx.fillStyle='rgba(100,120,180,0.2)';
+      bx.beginPath();bx.ellipse(mePx,mtY+6+bob,12,3,0,0,Math.PI*2);bx.fill();
+      // Main crystal body - large center facet (darker base)
+      bx.fillStyle='#6070b0';
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx+10,mtY+2+bob);
+      bx.lineTo(mePx,mtY+6+bob);bx.lineTo(mePx-10,mtY+2+bob);bx.closePath();bx.fill();
+      // Right facet (lighter)
+      bx.fillStyle='#8090d0';
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx+10,mtY+2+bob);
+      bx.lineTo(mePx+2,mtY+1+bob);bx.closePath();bx.fill();
+      // Left facet (mid tone)
+      bx.fillStyle='#7080c0';
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx-10,mtY+2+bob);
+      bx.lineTo(mePx-2,mtY+1+bob);bx.closePath();bx.fill();
+      // Top highlight facet
+      bx.fillStyle='#a0b0e0';
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx+3,mtY-3+bob);
+      bx.lineTo(mePx-3,mtY-3+bob);bx.closePath();bx.fill();
+      // Side crystal spires
+      bx.fillStyle='#7888c8';
+      bx.beginPath();bx.moveTo(mePx-8,mtY+1+bob);bx.lineTo(mePx-12,mtY-3+bob);
+      bx.lineTo(mePx-7,mtY+3+bob);bx.closePath();bx.fill();
+      bx.fillStyle='#8898d0';
+      bx.beginPath();bx.moveTo(mePx+8,mtY+1+bob);bx.lineTo(mePx+12,mtY-3+bob);
+      bx.lineTo(mePx+7,mtY+3+bob);bx.closePath();bx.fill();
+      // Edge highlight lines
+      bx.strokeStyle='rgba(200,210,255,0.5)';bx.lineWidth=1;
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx+10,mtY+2+bob);bx.stroke();
+      bx.beginPath();bx.moveTo(mePx,mtY-6+bob);bx.lineTo(mePx-10,mtY+2+bob);bx.stroke();
+      // Sparkle highlights that flash
+      const sparkles=[[2,-4],[6,0],[-5,1],[0,3],[-8,0],[9,1]];
+      for(let i=0;i<sparkles.length;i++){
+        if(Math.sin(sparkTime+i*1.5)>0.6){
+          bx.fillStyle='#ffffff';
+          bx.fillRect(mePx+sparkles[i][0],mtY+sparkles[i][1]+bob,1,1);
+        }
+      }
+      bx.lineWidth=1;
+    }
+
+    // ---- Emperor Rod (rod_ft1) - Golden throne with jeweled crown ----
+    else if(eqRodId==='rod_ft1'){
+      const bob=Math.sin(time*1.0)*0.5;
+      // Throne base/seat - dark gold shadow
+      bx.fillStyle='#907020';bx.fillRect(mePx-7,mtY-1+bob,14,7);
+      // Seat cushion
+      bx.fillStyle='#c04040';bx.fillRect(mePx-5,mtY+bob,10,4);
+      bx.fillStyle='#d05050';bx.fillRect(mePx-4,mtY+1+bob,8,2);
+      // Throne sides / armrests
+      bx.fillStyle='#b08020';
+      bx.fillRect(mePx-7,mtY-3+bob,3,9);bx.fillRect(mePx+4,mtY-3+bob,3,9);
+      // Armrest tops (brighter gold)
+      bx.fillStyle='#d0a030';
+      bx.fillRect(mePx-7,mtY-3+bob,3,2);bx.fillRect(mePx+4,mtY-3+bob,3,2);
+      // Throne backrest
+      bx.fillStyle='#a07820';bx.fillRect(mePx-5,mtY-10+bob,10,8);
+      bx.fillStyle='#c09030';bx.fillRect(mePx-4,mtY-9+bob,8,6);
+      // Backrest detail lines
+      bx.fillStyle='#a07820';bx.fillRect(mePx-1,mtY-9+bob,2,6);
+      // Crown on top of throne
+      bx.fillStyle='#ffd700';bx.fillRect(mePx-5,mtY-12+bob,10,3);
+      // Crown points
+      bx.fillRect(mePx-6,mtY-15+bob,2,3);
+      bx.fillRect(mePx-2,mtY-16+bob,2,4);
+      bx.fillRect(mePx+2,mtY-15+bob,2,3);
+      bx.fillRect(mePx+5,mtY-14+bob,2,2);
+      // Crown highlight
+      bx.fillStyle='#ffe850';bx.fillRect(mePx-4,mtY-11+bob,8,1);
+      // Jewels on crown
+      bx.fillStyle='#ff2020';bx.fillRect(mePx-5,mtY-13+bob,2,2); // ruby
+      bx.fillStyle='#20ff40';bx.fillRect(mePx-1,mtY-14+bob,2,2); // emerald
+      bx.fillStyle='#4488ff';bx.fillRect(mePx+3,mtY-13+bob,2,2); // sapphire
+      bx.fillStyle='#ff40ff';bx.fillRect(mePx+5,mtY-13+bob,1,1); // amethyst
+      // Jewel sparkle
+      if(Math.sin(time*5)>0.5){bx.fillStyle='#fff';bx.fillRect(mePx-5,mtY-13+bob,1,1)}
+      if(Math.sin(time*5+2)>0.5){bx.fillStyle='#fff';bx.fillRect(mePx+3,mtY-13+bob,1,1)}
+      // Gold feet
+      bx.fillStyle='#b08020';
+      bx.fillRect(mePx-7,mtY+5+bob,2,2);bx.fillRect(mePx+5,mtY+5+bob,2,2);
+    }
+
+    // ---- Infinity Rod (rod_ft2) - Rainbow bridge arc ----
+    else if(eqRodId==='rod_ft2'){
+      const bob=Math.sin(time*1.2)*0.5;
+      const cols2=['#ff3030','#ff7700','#ffdd00','#30dd30','#3080ff','#7030dd','#cc30dd'];
+      // Main rainbow arcs (thicker, more visible)
+      for(let c=0;c<7;c++){
+        bx.strokeStyle=cols2[c];bx.lineWidth=1.5;
+        bx.beginPath();
+        bx.ellipse(mePx,mtY+12+c*1.2+bob,16,10+c,0,Math.PI+0.3,Math.PI*2-0.3);
+        bx.stroke();
+      }
+      // Shimmer particles along the arc
+      for(let p=0;p<5;p++){
+        const a=Math.PI+0.5+p*0.4;
+        const r=14+Math.sin(time*3+p)*1;
+        const px=mePx+Math.cos(a)*r;
+        const py=mtY+12+bob+Math.sin(a)*r*0.65;
+        const ci=Math.floor((time*2+p)%7);
+        bx.fillStyle=cols2[ci];
+        bx.fillRect(px,py,1,1);
+      }
+      // Bright glow at apex
+      bx.fillStyle='rgba(255,255,255,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2+bob,4,2,0,0,Math.PI*2);bx.fill();
+      bx.lineWidth=1;
+    }
+
+    // ---- Nebula Rod (rod_cr1) - Nebula cloud (pink/purple/blue swirling gas) ----
+    else if(eqRodId==='rod_cr1'){
+      const spin=time*0.8;
+      const bob=Math.sin(time*1.2)*1;
+      // Outer nebula glow
+      bx.fillStyle='rgba(100,40,160,0.2)';
+      bx.beginPath();bx.ellipse(mePx,mtY+2+bob,15,6,0,0,Math.PI*2);bx.fill();
+      // Blue gas cloud (left)
+      bx.fillStyle='rgba(60,80,200,0.35)';
+      bx.beginPath();bx.ellipse(mePx-5+Math.sin(spin)*1,mtY+1+bob,7,4,0,0,Math.PI*2);bx.fill();
+      // Pink gas cloud (right)
+      bx.fillStyle='rgba(200,60,160,0.35)';
+      bx.beginPath();bx.ellipse(mePx+5+Math.cos(spin)*1,mtY+1+bob,7,4,0,0,Math.PI*2);bx.fill();
+      // Purple center
+      bx.fillStyle='rgba(140,60,200,0.4)';
+      bx.beginPath();bx.ellipse(mePx,mtY+bob,8,4,0,0,Math.PI*2);bx.fill();
+      // Bright center core
+      bx.fillStyle='rgba(200,150,255,0.3)';
+      bx.beginPath();bx.ellipse(mePx,mtY+bob,4,2,0,0,Math.PI*2);bx.fill();
+      // Swirling gas tendrils
+      for(let i=0;i<5;i++){
+        const a=spin*1.5+i*1.26;
+        const r=6+i*1.5;
+        const colors=['rgba(180,80,220,0.3)','rgba(80,60,200,0.25)','rgba(220,80,180,0.25)','rgba(100,100,220,0.2)','rgba(180,60,160,0.2)'];
+        bx.fillStyle=colors[i];
+        bx.fillRect(mePx+Math.cos(a)*r,mtY+bob+Math.sin(a)*r*0.4,2,1);
+      }
+      // Embedded stars
+      for(let s=0;s<4;s++){
+        const twinkle=Math.sin(time*3+s*1.5)>0.3?1:0;
+        if(twinkle){
+          bx.fillStyle='rgba(255,255,255,0.7)';
+          bx.fillRect(mePx-6+s*4+Math.sin(s)*2,mtY-1+bob+Math.cos(s)*2,1,1);
+        }
+      }
+    }
+
+    // ---- Cosmic Rod (rod_cr2) - Comet with glowing tail ----
+    else if(eqRodId==='rod_cr2'){
+      const bob=Math.sin(time*1.5)*1;
+      // Comet tail (long, trailing left, gradient from bright to dim)
+      for(let t=0;t<8;t++){
+        const tailAlpha=0.5-t*0.06;
+        const tailWidth=4-t*0.4;
+        bx.fillStyle=`rgba(120,160,255,${tailAlpha})`;
+        bx.beginPath();bx.ellipse(mePx-4-t*2.5,mtY+2+bob+Math.sin(time*2+t*0.3)*0.5,tailWidth,tailWidth*0.5,0,0,Math.PI*2);bx.fill();
+      }
+      // Secondary tail (warm color)
+      for(let t=0;t<5;t++){
+        bx.fillStyle=`rgba(255,200,100,${0.3-t*0.05})`;
+        bx.beginPath();bx.ellipse(mePx-3-t*2,mtY+1+bob,2-t*0.2,1,0,0,Math.PI*2);bx.fill();
+      }
+      // Comet head - outer glow
+      bx.fillStyle='rgba(140,180,255,0.4)';
+      bx.beginPath();bx.ellipse(mePx+4,mtY+2+bob,7,4,0,0,Math.PI*2);bx.fill();
+      // Comet head - bright core
+      bx.fillStyle='#aaccff';
+      bx.beginPath();bx.ellipse(mePx+4,mtY+1+bob,5,3,0,0,Math.PI*2);bx.fill();
+      // Comet nucleus - white hot center
+      bx.fillStyle='#ddeeff';
+      bx.beginPath();bx.ellipse(mePx+4,mtY+1+bob,3,2,0,0,Math.PI*2);bx.fill();
+      bx.fillStyle='#ffffff';
+      bx.beginPath();bx.ellipse(mePx+4,mtY+bob,2,1,0,0,Math.PI*2);bx.fill();
+      // Sparkle on comet head
+      if(Math.sin(time*6)>0.3){
+        bx.fillStyle='#ffffff';bx.fillRect(mePx+6,mtY-1+bob,1,1);
+      }
+    }
+
+    // ---- Default mount for any other strong rod ----
+    else {
+      const pulse=0.4+Math.sin(time*2)*0.15;
+      // Glowing platform base
+      bx.fillStyle=`rgba(80,80,120,${pulse*0.5})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+3,12,4,0,0,Math.PI*2);bx.fill();
+      // Brighter inner disc
+      bx.fillStyle=`rgba(120,120,180,${pulse*0.6})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,9,3,0,0,Math.PI*2);bx.fill();
+      // Core glow
+      bx.fillStyle=`rgba(160,160,220,${pulse*0.4})`;
+      bx.beginPath();bx.ellipse(mePx,mtY+2,5,2,0,0,Math.PI*2);bx.fill();
+      // Edge particles
+      for(let i=0;i<3;i++){
+        const a=time*2+i*2.1;
+        bx.fillStyle=`rgba(180,180,255,${pulse*0.5})`;
+        bx.fillRect(mePx+Math.cos(a)*10,mtY+2+Math.sin(a)*3,1,1);
+      }
+    }
+  }
+
+  // All players sorted by Y (drawn AFTER mounts so player is in front)
   const drawList=[{data:me,isMe:true,y:me.y}];
 
   for(const item of drawList){
@@ -4360,6 +6884,236 @@ function render(){
     const px=Math.floor((p.x||0)-camX),py=Math.floor((p.y||0)-camY);
     if(px<-30||py<-30||px>RW+30||py>RH+30)continue;
     drawPlayerSprite(bx,p,px,py,item.isMe);
+  }
+
+  // ========== FISH TANK ON MAP ==========
+  if(me.tankPos&&me.tankPos.island===curIsland&&me.fishTank.length>0){
+    const tkx=Math.floor(me.tankPos.x-camX),tky=Math.floor(me.tankPos.y-camY);
+    if(tkx>-40&&tky>-40&&tkx<RW+40&&tky<RH+40){
+      // Glass tank body
+      bx.fillStyle='rgba(30,80,120,0.4)';
+      bx.fillRect(tkx-16,tky-10,32,20);
+      // Water inside
+      bx.fillStyle='rgba(40,120,180,0.35)';
+      bx.fillRect(tkx-14,tky-6,28,14);
+      // Glass edges (shiny)
+      bx.strokeStyle='rgba(150,220,255,0.5)';bx.lineWidth=1;
+      bx.strokeRect(tkx-16,tky-10,32,20);bx.lineWidth=1;
+      // Glass shine
+      bx.fillStyle='rgba(200,240,255,0.3)';
+      bx.fillRect(tkx-14,tky-9,2,16);
+      // Sand at bottom
+      bx.fillStyle='#c8a860';
+      bx.fillRect(tkx-14,tky+5,28,3);
+      // Small plant
+      bx.fillStyle='#3a8a3a';
+      bx.fillRect(tkx-10,tky+1,1,4);bx.fillRect(tkx-11,tky+1,1,2);
+      bx.fillRect(tkx+8,tky+2,1,3);bx.fillRect(tkx+9,tky+3,1,2);
+      // Draw fish inside tank (mini sprites swimming around)
+      for(let fi=0;fi<me.fishTank.length;fi++){
+        const tf=me.fishTank[fi];
+        const swimX=tkx-10+((time*15+fi*37)%24);
+        const swimY=tky-4+((fi*7)%10)+Math.sin(time*2+fi)*2;
+        drawFishSprite(bx,tf.name,tf.rarity,swimX,swimY,0.35);
+      }
+      // Bubbles rising
+      for(let bi=0;bi<3;bi++){
+        const bby=tky-4-((time*12+bi*8)%12);
+        const bbx=tkx-6+bi*7+Math.sin(time+bi)*2;
+        bx.fillStyle='rgba(180,230,255,0.4)';
+        bx.beginPath();bx.arc(bbx,bby,1,0,Math.PI*2);bx.fill();
+      }
+      // Label
+      textOverlays.push({type:'label',text:'FISH TANK',x:tkx,y:tky-14,color:'#5be0f5'});
+    }
+  }
+
+  // ========== PET RENDERING ==========
+  if(me.pet){
+    const petPx=Math.floor(me.petX-camX),petPy=Math.floor(me.petY-camY);
+    if(petPx>-20&&petPy>-20&&petPx<RW+20&&petPy<RH+20){
+      const bob=Math.sin(time*3)*1;
+      // Shadow
+      bx.fillStyle='rgba(0,0,0,0.15)';
+      bx.beginPath();bx.ellipse(petPx,petPy+4,3,1.5,0,0,Math.PI*2);bx.fill();
+      // Draw the actual fish sprite at small scale
+      drawFishSprite(bx,me.pet.name,me.pet.rarity,petPx,petPy+bob,0.6);
+      // Sparkle for rare+ pets
+      if(me.pet.rarity==='rare'||me.pet.rarity==='epic'||me.pet.rarity==='legendary'){
+        if(Math.sin(time*5)>0.7){bx.fillStyle='#fff';bx.fillRect(petPx+Math.cos(time*4)*4,petPy-3+bob,1,1)}
+      }
+      // Name label
+      const pc=_PET_COLS[me.pet.rarity]||'#6a9a6a';
+      textOverlays.push({type:'label',text:me.pet.nickname||me.pet.name,x:petPx,y:petPy-8+bob,color:pc});
+    }
+  }
+
+  // ========== ROD AMBIENT PARTICLES (on top of mounts) ==========
+  // Leviathan Rod - 3 big scary necks rising FAR from player
+  if(eqRodId==='rod_do3'){
+    for(let i=0;i<3;i++){
+      // Very far from player: left(-40), right(+40), behind(0, y+20)
+      const offsets=[{x:-40,y:6,lean:-2},{x:40,y:6,lean:2},{x:0,y:22,lean:0}];
+      const baseX=mePx+offsets[i].x;
+      const baseY=mePy+offsets[i].y;
+      const sway=Math.sin(time*0.8+i*2.1)*4;
+      const lean=offsets[i].lean;
+
+      // Neck - 12 segments, TALL and thick
+      let nx=baseX,ny=baseY;
+      for(let s=0;s<12;s++){
+        const t=s/12;
+        const segX=baseX+lean*s*1.2+sway*t*t;
+        const segY=baseY-s*5;
+        const thick=5-s*0.2;
+        // Dark outer
+        bx.fillStyle='#0a3535';
+        bx.beginPath();bx.ellipse(segX,segY,thick,thick*0.8,0,0,Math.PI*2);bx.fill();
+        // Inner
+        bx.fillStyle='#1a5555';
+        bx.beginPath();bx.ellipse(segX,segY,thick-1,thick*0.5,0,0,Math.PI*2);bx.fill();
+        // Belly highlight
+        bx.fillStyle='#2a7a6a';
+        bx.fillRect(segX-1,segY+1,2,1);
+        // Scales
+        if(s%2===0){bx.fillStyle='#0a3030';bx.fillRect(segX-thick+1,segY,1,1);bx.fillRect(segX+thick-2,segY,1,1)}
+        nx=segX;ny=segY;
+      }
+
+      // Big scary head
+      const hx=nx+lean+sway*0.2;
+      const hy=ny-6;
+      // Skull
+      bx.fillStyle='#0a3535';
+      bx.beginPath();bx.ellipse(hx,hy,6,4,0,0,Math.PI*2);bx.fill();
+      bx.fillStyle='#1a5050';
+      bx.beginPath();bx.ellipse(hx,hy,5,3,0,0,Math.PI*2);bx.fill();
+      // Heavy brow
+      bx.fillStyle='#0a2a2a';
+      bx.fillRect(hx-5,hy-4,10,2);
+      // Red glowing eyes
+      bx.fillStyle='#ff0000';
+      bx.fillRect(hx-3,hy-2,2,2);
+      bx.fillRect(hx+1,hy-2,2,2);
+      bx.fillStyle='#000';
+      bx.fillRect(hx-2,hy-1,1,1);
+      bx.fillRect(hx+2,hy-1,1,1);
+      // Jaw
+      bx.fillStyle='#0a2a2a';
+      bx.fillRect(hx-4,hy+2,8,2);
+      // Fangs
+      bx.fillStyle='#ddd';
+      bx.fillRect(hx-3,hy+2,1,2);
+      bx.fillRect(hx+2,hy+2,1,2);
+      // Horns
+      bx.fillStyle='#0a3030';
+      bx.fillRect(hx-4,hy-7,2,4);
+      bx.fillRect(hx+2,hy-7,2,4);
+    }
+  }
+  // Celestial Rod - orbiting stars + sparkles
+  if(eqRodId==='rod_sk3'){
+    for(let i=0;i<5;i++){
+      const a=time*1.2+i*1.26;const r=15+Math.sin(time*1.5+i)*3;
+      const sx=mePx+Math.cos(a)*r,sy=mePy+Math.sin(a)*r*0.6-4;
+      bx.fillStyle='#ffd700';bx.fillRect(sx,sy,2,1);bx.fillRect(sx,sy-1,1,2);
+      bx.fillStyle='#fff';bx.fillRect(sx,sy,1,1);
+    }
+  }
+  // Magma Rod - fire particles orbit
+  if(eqRodId==='rod_v3'){
+    for(let i=0;i<5;i++){
+      const a=time*2+i*1.26;const r=12+Math.sin(time*3+i)*3;
+      bx.fillStyle=i%3===0?'#ff2000':i%3===1?'#ff8020':'#ffc040';
+      bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.6-3,2,2);
+    }
+  }
+  // Diamond Rod - sparkles everywhere
+  if(eqRodId==='rod_c3'){
+    for(let i=0;i<7;i++){
+      if(Math.sin(time*4+i*1.7)>0.2){const a=time*1.8+i*0.9;const r=6+i*1;
+      bx.fillStyle='#fff';bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.6-3,1,1);
+      bx.fillStyle='#80c0ff';bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.6-2,1,1);}
+    }
+  }
+  // Glacier Rod - snowflakes + icy sparkles
+  if(eqRodId==='rod_a3'){
+    for(let i=0;i<5;i++){
+      const sx=mePx-10+((time*6+i*8)%20);const sy=mePy-10+((time*10+i*10)%24);
+      bx.fillStyle='rgba(200,230,255,0.6)';bx.fillRect(sx,sy,1,1);
+    }
+  }
+  // Spore Rod - spore cloud
+  if(eqRodId==='rod_mu3'){
+    for(let i=0;i<7;i++){
+      const a=time*1.5+i*0.9;const r=9+Math.sin(time*2+i)*3;
+      bx.fillStyle=`rgba(200,120,255,${0.3+Math.sin(time*3+i)*0.2})`;
+      bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.5-2,2,2);
+    }
+  }
+  // Gator Rod - splashing water
+  if(eqRodId==='rod_s3'){
+    for(let i=0;i<2;i++){
+      bx.fillStyle='rgba(100,180,120,0.3)';
+      bx.fillRect(mePx-6+i*10+Math.sin(time*3+i)*2,mtY+6+i,1,1);
+    }
+  }
+  // Wyrm Rod - fire particles
+  if(eqRodId==='rod_dl2'){
+    for(let i=0;i<4;i++){
+      const fy=mePy-((time*15+i*8)%15);const fx=mePx+Math.sin(time*2+i)*7;
+      bx.fillStyle=i%2?'#ff4020':'#ffa040';bx.fillRect(fx,fy,1,1);
+    }
+  }
+  // Infinity Rod - rainbow sparkle trail
+  if(eqRodId==='rod_ft2'){
+    const cols3=['#ff4444','#ff8800','#ffff00','#44ff44','#4488ff','#aa44ff'];
+    for(let i=0;i<7;i++){
+      const a=time*2+i*0.9;const r=12+Math.sin(time+i)*4;
+      bx.fillStyle=cols3[i%6];bx.globalAlpha=0.5;
+      bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.5-2,2,2);
+    }
+    bx.globalAlpha=1;
+  }
+  // Tempest Rod - debris flying
+  if(eqRodId==='rod_sp3'){
+    for(let i=0;i<3;i++){const a=time*3+i*2.1;bx.fillStyle='#8a7a4a';bx.fillRect(mePx+Math.cos(a)*8,mePy+Math.sin(a)*7-3,1,1)}
+  }
+  // Thor's Rod - lightning flash
+  if(eqRodId==='rod_tf3'){
+    if(Math.sin(time*7)>0.8){bx.fillStyle='rgba(255,255,200,0.1)';bx.fillRect(mePx-15,mePy-15,30,30)}
+  }
+  // Void Rod - void particles spiral in
+  if(eqRodId==='rod_vw2'){
+    for(let i=0;i<5;i++){const a=time*2.5+i*1.26;const r=13-((time*8+i*4)%13);bx.fillStyle=`rgba(180,100,255,${r/13*0.5})`;bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.6-2,1,1)}
+  }
+  // Dark Star Rod - light being sucked in
+  if(eqRodId==='rod_dn2'){
+    for(let i=0;i<5;i++){const a=time*2+i*1.26;const r=14-((time*6+i*5)%14);bx.fillStyle=`rgba(200,150,255,${r/14*0.4})`;bx.fillRect(mePx+Math.cos(a)*r,mePy+Math.sin(a)*r*0.5-2,1,1)}
+  }
+  // Entropy Rod - glitch effects
+  if(eqRodId==='rod_ch2'){
+    for(let i=0;i<4;i++){const a=time*4+i;bx.fillStyle=i%2?'#ff2020':'#400';bx.fillRect(mePx+Math.cos(a)*Math.sin(time*2+i)*11,mePy+Math.sin(a)*6-3,2,1)}
+  }
+  // Emperor Rod - golden orbiting gems
+  if(eqRodId==='rod_ft1'){
+    for(let i=0;i<3;i++){const a=time*1.5+i*2.1;bx.fillStyle='rgba(255,215,0,0.5)';bx.fillRect(mePx+Math.cos(a)*11,mePy+Math.sin(a)*8-3,2,2)}
+  }
+  // Coral Rod - bubbles rising
+  if(eqRodId==='rod_t2'){
+    for(let i=0;i<3;i++){const by2=mePy-3-((time*12+i*8)%18);bx.fillStyle='rgba(180,230,255,0.3)';bx.beginPath();bx.arc(mePx-3+i*3+Math.sin(time+i)*2,by2,1,0,Math.PI*2);bx.fill()}
+  }
+  // Tiki Rod - smoke wisps
+  if(eqRodId==='rod_t3'){
+    for(let i=0;i<2;i++){const sy=mePy-8-((time*8+i*6)%10);bx.fillStyle=`rgba(80,80,80,${0.3-((time*8+i*6)%10)/25})`;bx.fillRect(mePx-2+i*4+Math.sin(time+i)*1,sy,1,1)}
+  }
+  // Pharaoh Rod - golden ankhs
+  if(eqRodId==='rod_d3'){
+    for(let i=0;i<2;i++){const a=time*1.2+i*3.14;const r=12;const ax=mePx+Math.cos(a)*r,ay=mePy+Math.sin(a)*r*0.5-4;bx.fillStyle='#ffd700';bx.fillRect(ax,ay-1,1,3);bx.fillRect(ax-1,ay,3,1);bx.beginPath();bx.arc(ax+0.5,ay-2,1,0,Math.PI*2);bx.fill()}
+  }
+  // Cloud Rod - little cloud puffs drift off
+  if(eqRodId==='rod_sk2'){
+    for(let i=0;i<2;i++){const cx2=mePx+Math.sin(time*0.8+i*3.14)*8;const cy2=mePy+6+i*3;bx.fillStyle='rgba(240,248,255,0.2)';bx.beginPath();bx.ellipse(cx2,cy2,2,1,0,0,Math.PI*2);bx.fill()}
   }
 
   // FULL SCREEN ability effects while reeling
@@ -4816,6 +7570,266 @@ function render(){
     sailingText=`${ISLANDS[sailTargetIsland].name} - ${Math.round(dist2)}m`;
   }
 
+  // ========== GEM NODES ==========
+  for(const gn of gemNodes){
+    if(gn.mined)continue;
+    const gnx=Math.floor(gn.x-camX),gny=Math.floor(gn.y-camY);
+    if(gnx<-10||gny<-10||gnx>RW+10||gny>RH+10)continue;
+    // Rock
+    bx.fillStyle='#4a4a5a';
+    bx.fillRect(gnx-3,gny-2,6,4);bx.fillRect(gnx-2,gny-3,4,6);
+    // Gem sparkle
+    const sparkle=Math.sin(time*4+gn.x)*0.5+0.5;
+    bx.fillStyle=`rgba(180,100,255,${0.4+sparkle*0.4})`;
+    bx.fillRect(gnx-1,gny-1,2,2);
+    bx.fillStyle=`rgba(255,200,255,${sparkle*0.6})`;
+    bx.fillRect(gnx,gny-1,1,1);
+  }
+
+  // ========== FOOTPRINTS ON SAND ==========
+  for(const fp of footprints){
+    const fpx=Math.floor(fp.x-camX),fpy=Math.floor(fp.y-camY);
+    if(fpx>-5&&fpy>-5&&fpx<RW+5&&fpy<RH+5){
+      const alpha=Math.max(0,1-fp.age/8)*0.3;
+      bx.fillStyle=`rgba(80,60,30,${alpha})`;
+      bx.fillRect(fpx-1,fpy+3,2,2);bx.fillRect(fpx+1,fpy+4,2,2);
+    }
+  }
+
+  // ========== TREASURE BOTTLES ON WATER ==========
+  for(const b of bottles){
+    const btx=Math.floor(b.x-camX),bty=Math.floor(b.y-camY);
+    if(btx>-5&&bty>-5&&btx<RW+5&&bty<RH+5){
+      const bob2=Math.sin(time*3+b.x)*1.5;
+      // Bottle body
+      bx.fillStyle='#4a8a3a';bx.fillRect(btx-1,bty+bob2-2,3,4);
+      // Cork
+      bx.fillStyle='#c8a040';bx.fillRect(btx,bty+bob2-3,1,2);
+      // Sparkle
+      if(Math.sin(time*5+b.x)>0.8){bx.fillStyle='#ffd700';bx.fillRect(btx+1,bty+bob2-3,1,1)}
+    }
+  }
+
+  // ========== LUCKY FISHING SPOTS ==========
+  for(const ls of luckySpots){
+    const lsx=Math.floor(ls.x-camX),lsy=Math.floor(ls.y-camY);
+    if(lsx>-10&&lsy>-10&&lsx<RW+10&&lsy<RH+10){
+      // Glowing ring on water
+      const pulse=0.4+Math.sin(time*4)*0.3;
+      bx.strokeStyle=`rgba(255,215,0,${pulse})`;bx.lineWidth=1;
+      bx.beginPath();bx.arc(lsx,lsy,5+Math.sin(time*2)*2,0,Math.PI*2);bx.stroke();
+      // Sparkles
+      for(let i=0;i<4;i++){
+        const sx2=lsx+Math.cos(time*2+i*1.57)*6;
+        const sy2=lsy+Math.sin(time*2+i*1.57)*4;
+        bx.fillStyle=`rgba(255,255,100,${pulse})`;
+        bx.fillRect(sx2,sy2,1,1);
+      }
+    }
+  }
+
+  // ========== CAMPFIRE ==========
+  if(campfirePos&&campfirePos.island===curIsland){
+    const cfx=Math.floor(campfirePos.x-camX),cfy=Math.floor(campfirePos.y-camY);
+    if(cfx>-20&&cfy>-20&&cfx<RW+20&&cfy<RH+20){
+      // Logs
+      bx.fillStyle='#5a3a1a';bx.fillRect(cfx-4,cfy+1,8,3);
+      bx.fillStyle='#4a2a0a';bx.fillRect(cfx-3,cfy+2,3,2);bx.fillRect(cfx+1,cfy+2,3,2);
+      // Fire glow
+      const flicker=0.5+Math.sin(time*8)*0.2+Math.sin(time*12)*0.1;
+      bx.fillStyle=`rgba(255,120,20,${flicker*0.3})`;
+      bx.beginPath();bx.arc(cfx,cfy-2,8,0,Math.PI*2);bx.fill();
+      // Flames
+      for(let i=0;i<4;i++){
+        const fx2=cfx-2+i*1.5+Math.sin(time*10+i)*1;
+        const fy2=cfy-1-Math.abs(Math.sin(time*8+i*2))*5;
+        const h=3+Math.sin(time*6+i)*2;
+        bx.fillStyle=i%2===0?'#ff6020':'#ffcc00';
+        bx.fillRect(fx2,fy2,1,h);
+      }
+      // Particles
+      for(const cp of campfireParticles){
+        const cpx=Math.floor(cp.x-camX),cpy=Math.floor(cp.y-camY);
+        bx.fillStyle=cp.col;bx.globalAlpha=cp.life;
+        bx.fillRect(cpx,cpy,1,1);
+      }
+      bx.globalAlpha=1;
+      // Light radius at night
+      if(getDayPhase()==='night'){
+        bx.fillStyle='rgba(255,150,50,0.06)';
+        bx.beginPath();bx.arc(cfx,cfy,30,0,Math.PI*2);bx.fill();
+      }
+    }
+  }
+
+  // ========== TREASURE MAP DIG SPOT ==========
+  if(activeTreasureMap&&activeTreasureMap.island===curIsland){
+    const tdx=Math.floor(activeTreasureMap.x-camX),tdy=Math.floor(activeTreasureMap.y-camY);
+    if(tdx>-10&&tdy>-10&&tdx<RW+10&&tdy<RH+10){
+      // X marks the spot!
+      bx.fillStyle=`rgba(255,50,50,${0.5+Math.sin(time*3)*0.3})`;
+      bx.fillRect(tdx-3,tdy-3,2,2);bx.fillRect(tdx+2,tdy-3,2,2);
+      bx.fillRect(tdx-1,tdy-1,2,2);
+      bx.fillRect(tdx-3,tdy+2,2,2);bx.fillRect(tdx+2,tdy+2,2,2);
+    }
+  }
+
+  // ========== FIREFLIES (night only) ==========
+  if(getDayPhase()==='night'||getDayPhase()==='dusk'){
+    for(const ff of fireflies){
+      const ffx=Math.floor(ff.x-camX),ffy=Math.floor(ff.y-camY);
+      if(ffx<-5||ffy<-5||ffx>RW+5||ffy>RH+5)continue;
+      const glow=0.3+Math.sin(ff.phase)*0.7;
+      if(glow>0.2){
+        bx.fillStyle=`rgba(200,255,100,${glow*0.8})`;
+        bx.fillRect(ffx,ffy,2,2);
+        bx.fillStyle=`rgba(200,255,100,${glow*0.3})`;
+        bx.fillRect(ffx-1,ffy-1,4,4);
+      }
+    }
+  }
+
+  // ========== WEATHER EFFECTS ==========
+  if(weather==='rain'||weather==='storm'){
+    for(const rd of raindrops){
+      const rx=((rd.x+time*20)%RW);
+      const ry=((rd.y+time*rd.spd)%RH);
+      bx.fillStyle=weather==='storm'?'rgba(180,200,255,0.5)':'rgba(150,180,220,0.35)';
+      bx.fillRect(rx,ry,1,3);
+    }
+    // Puddle ripples on ground
+    if(weather==='storm'){
+      for(let i=0;i<8;i++){
+        const rx=((i*47+time*10)%RW);
+        const ry=((i*31+time*5)%RH);
+        const rr=1+Math.sin(time*4+i)*1;
+        bx.strokeStyle='rgba(150,200,255,0.2)';bx.lineWidth=0.5;
+        bx.beginPath();bx.arc(rx,ry,rr,0,Math.PI*2);bx.stroke();
+      }
+    }
+  }
+  if(weather==='fog'){
+    // Fog patches
+    for(let i=0;i<12;i++){
+      const fx3=((i*43+time*3)%RW)-10;
+      const fy3=((i*67)%RH);
+      bx.fillStyle='rgba(200,210,220,0.12)';
+      bx.beginPath();bx.ellipse(fx3,fy3,20+Math.sin(time+i)*5,8,0,0,Math.PI*2);bx.fill();
+    }
+  }
+
+  // ========== WATER REFLECTIONS (moonlight/sunlight shimmer) ==========
+  if(getDayPhase()==='night'){
+    // Moonlight reflections on water
+    for(let i=0;i<15;i++){
+      const mx=((i*29+time*4)%RW);
+      const my=((i*41+time*2)%RH);
+      const tile=tileAt(mx+camX,my+camY);
+      if(tile===1){
+        bx.fillStyle=`rgba(200,220,255,${0.1+Math.sin(time*3+i)*0.08})`;
+        bx.fillRect(mx,my,2,1);
+      }
+    }
+  }else if(getDayPhase()==='day'){
+    // Sun sparkles on water
+    for(let i=0;i<10;i++){
+      const mx=((i*37+time*6)%RW);
+      const my=((i*53+time*3)%RH);
+      const tile=tileAt(mx+camX,my+camY);
+      if(tile===1&&Math.sin(time*5+i*2)>0.85){
+        bx.fillStyle='rgba(255,255,200,0.4)';
+        bx.fillRect(mx,my,1,1);
+      }
+    }
+  }
+
+  // ========== NORTHERN LIGHTS (arctic islands only) ==========
+  if(curIsland===3||curIsland===17){// Arctic + Frozen Lake
+    if(getDayPhase()==='night'||getDayPhase()==='dusk'){
+      const aColors=['rgba(100,255,150,0.06)','rgba(100,200,255,0.05)','rgba(200,100,255,0.04)'];
+      for(let i=0;i<5;i++){
+        const ax=((i*60+time*8)%RW);
+        const ay=5+i*8+Math.sin(time*0.5+i)*5;
+        const aw=40+Math.sin(time*0.3+i*2)*15;
+        bx.fillStyle=aColors[i%3];
+        bx.beginPath();bx.ellipse(ax,ay,aw,3+Math.sin(time+i)*2,Math.sin(time*0.2+i)*0.3,0,Math.PI*2);bx.fill();
+      }
+    }
+  }
+
+  // ========== SEASONAL LEAVES/PETALS ==========
+  if(curIsland===0||curIsland===15){// Meadow + Riverside - flower petals
+    for(let i=0;i<8;i++){
+      const lx=((i*43+time*12)%RW);
+      const ly=((i*29+time*8+Math.sin(time+i*2)*15)%RH);
+      bx.fillStyle=i%2===0?'rgba(255,180,200,0.5)':'rgba(255,220,180,0.4)';
+      bx.fillRect(lx,ly,2,1);
+    }
+  }
+  if(curIsland===5){// Mushroom - spores
+    for(let i=0;i<10;i++){
+      const lx=((i*37+time*5)%RW);
+      const ly=((i*41-time*10+300)%RH);
+      bx.fillStyle=`rgba(180,255,180,${0.3+Math.sin(time*2+i)*0.2})`;
+      bx.fillRect(lx,ly,1,1);
+    }
+  }
+
+  // ========== DAY/NIGHT OVERLAY ==========
+  const brightness=getDayBrightness();
+  if(brightness<1){
+    const darkness=1-brightness;
+    bx.fillStyle=`rgba(10,10,40,${darkness*0.6})`;
+    bx.fillRect(0,0,RW,RH);
+    // Stars at night
+    if(getDayPhase()==='night'){
+      for(let i=0;i<30;i++){
+        const sx2=(i*97+i*i*13)%RW;
+        const sy2=(i*61+i*i*7)%Math.floor(RH*0.5);
+        const twinkle=0.3+Math.sin(time*2+i*1.7)*0.4;
+        bx.fillStyle=`rgba(255,255,255,${twinkle})`;
+        bx.fillRect(sx2,sy2,1,1);
+      }
+      // Moon
+      bx.fillStyle='rgba(240,240,200,0.8)';
+      bx.beginPath();bx.arc(RW*0.8,RH*0.12,6,0,Math.PI*2);bx.fill();
+      bx.fillStyle='rgba(220,220,180,0.5)';
+      bx.beginPath();bx.arc(RW*0.8-1,RH*0.12-1,4,0,Math.PI*2);bx.fill();
+    }
+    // Dawn/dusk colors
+    if(getDayPhase()==='dawn'){
+      bx.fillStyle='rgba(255,150,80,0.08)';bx.fillRect(0,0,RW,RH);
+    }
+    if(getDayPhase()==='dusk'){
+      bx.fillStyle='rgba(255,100,50,0.1)';bx.fillRect(0,0,RW,RH);
+    }
+  }
+
+  // ========== SHOOTING STARS ==========
+  for(const ss of shootingStars){
+    const trail=Math.min(ss.life*10,8);
+    bx.strokeStyle=`rgba(255,255,200,${ss.life})`;bx.lineWidth=1;
+    bx.beginPath();bx.moveTo(ss.x,ss.y);bx.lineTo(ss.x-ss.vx*0.03*trail,ss.y-ss.vy*0.03*trail);bx.stroke();
+    bx.fillStyle='#fff';bx.fillRect(ss.x,ss.y,2,1);
+  }
+
+  // ========== LIGHTNING FLASH ==========
+  if(lightningFlash>0){
+    bx.fillStyle=`rgba(255,255,255,${lightningFlash*0.3})`;
+    bx.fillRect(0,0,RW,RH);
+  }
+
+  // ========== FISH SPLASH PARTICLES ON CAST ==========
+  if(me.state==='waiting'&&me.waitT>3.5){
+    // Just cast - show splash
+    for(let i=0;i<6;i++){
+      const splX=me.bobX-camX+rand(-6,6);
+      const splY=me.bobY-camY-rand(2,8);
+      bx.fillStyle='rgba(150,200,255,0.6)';
+      bx.fillRect(splX,splY,1,1);
+    }
+  }
+
   ctx.clearRect(0,0,W,H);
   ctx.imageSmoothingEnabled=false;
   ctx.drawImage(buf,0,0,RW,RH,0,0,W,H);
@@ -4858,6 +7872,17 @@ function render(){
       ctx.fillStyle='#ffd700';
       ctx.fillText('!',t.x*SC,t.y*SC);
     }
+  }
+
+  // Tournament HUD
+  if(tourneyActive){
+    const tBarW=120*SC/3;
+    const tBarX=W/2-tBarW/2;
+    ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(tBarX,4,tBarW,16);
+    ctx.fillStyle='#f5a623';ctx.fillRect(tBarX+2,6,Math.max(0,(tBarW-4)*(tourneyTimer/60)),12);
+    ctx.font='bold 13px monospace';
+    ctx.fillStyle='#ffd700';
+    ctx.fillText(Math.ceil(tourneyTimer)+'s  $'+tourneyScore,W/2,34);
   }
 
   // Toast overlay text
